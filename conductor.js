@@ -39,8 +39,10 @@ const MAX_RETRIES = CONFIG.MAX_RETRIES;
 
 // ── mock-render 프로듀서 ────────────────────────────────────
 // Remotion + Chrome 없이 FFmpeg로 최소 MP4를 생성한다 (파이프라인 검증용)
-async function mockRenderProduce(input, _canon, _feedback, episodeDir) {
-  const { voice = {}, structure = {} } = input;
+async function mockRenderProduce(input, _canon, _feedback, episodeDir, state) {
+  // input = visual payload; voice·structure는 state에서 가져온다
+  const voice     = state?.getPayload("voice")     ?? {};
+  const structure = state?.getPayload("structure") ?? {};
   const audioPath = voice?.audio_path ?? "";
   const totalSecs = Math.max(
     structure?.beats?.reduce((s, b) => s + (b.duration_seconds ?? 0), 0) ?? 0,
@@ -69,8 +71,9 @@ async function mockRenderProduce(input, _canon, _feedback, episodeDir) {
 
 // ── mock-visual 프로듀서 ────────────────────────────────────
 // Imagen API 없이 FFmpeg로 placeholder PNG를 생성한다 (파이프라인 검증용)
-async function mockVisualProduce(input, _canon, _feedback, episodeDir) {
-  const { beats } = input;
+async function mockVisualProduce(input, _canon, _feedback, episodeDir, state) {
+  // input = script payload; beats는 state에서 가져온다
+  const beats = state?.getPayload("structure")?.beats ?? [];
   const assets = [];
 
   for (const beat of beats) {
@@ -298,6 +301,11 @@ async function main() {
           console.error(`[${stage.name}] ❌ produce 오류: ${err.message}`);
           feedback = [err.message];
           skipProduce = false;
+          if (attempt < MAX_RETRIES) {
+            const delay = err.message.includes("503") ? 8000 : 2000;
+            console.log(`[${stage.name}] ⏳ ${delay / 1000}초 후 재시도...`);
+            await new Promise((r) => setTimeout(r, delay));
+          }
           continue;
         }
       } else {
