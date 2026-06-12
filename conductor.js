@@ -27,6 +27,8 @@ import { runV4 } from "./verifiers/v4-voice-check.js";
 import { runV5 } from "./verifiers/v5-visual-check.js";
 import { runV6 } from "./verifiers/v6-render-check.js";
 import { runM1 } from "./verifiers/m1-final-check.js";
+import { computeRiskScore } from "./lib/risk-scorer.js";
+import { canAutoApprove } from "./lib/confidence-gate.js";
 import { StateManager } from "./lib/state-manager.js";
 import { loadCanon } from "./lib/canon-loader.js";
 import { humanApprove, presentEscalation, closeGate } from "./lib/human-gate.js";
@@ -333,18 +335,31 @@ async function main() {
     }
 
     // — 사람 승인 게이트 —
-    const { approved, humanFeedback } = await humanApprove(
-      stage.name,
-      state.getPayload(stage.name)
-    );
-    if (approved) {
+    // Risk Score와 Confidence Gate를 먼저 확인한다
+    const riskInfo = computeRiskScore(state);
+    const autoOk   = canAutoApprove(stage.name, riskInfo);
+
+    if (autoOk) {
+      console.log(
+        `[${stage.name}] 🤖 자동 승인 (risk ${riskInfo.score}/${riskInfo.level}, calibration 충분)`
+      );
       state.markStageHumanApproved(stage.name);
       stageIndex++;
     } else {
-      console.log(`\n[${stage.name}] 🔄 사람 거부. 피드백: "${humanFeedback}"`);
-      state.resetStage(stage.name);
-      humanRejFeedback = [humanFeedback];
-      // stageIndex 유지 → 같은 stage 재실행
+      console.log(`[${stage.name}] ⚠️  위험점수: ${riskInfo.score} (${riskInfo.level})`);
+      const { approved, humanFeedback } = await humanApprove(
+        stage.name,
+        state.getPayload(stage.name)
+      );
+      if (approved) {
+        state.markStageHumanApproved(stage.name);
+        stageIndex++;
+      } else {
+        console.log(`\n[${stage.name}] 🔄 사람 거부. 피드백: "${humanFeedback}"`);
+        state.resetStage(stage.name);
+        humanRejFeedback = [humanFeedback];
+        // stageIndex 유지 → 같은 stage 재실행
+      }
     }
   }
 
