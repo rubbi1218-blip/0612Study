@@ -1,12 +1,11 @@
 /**
  * A3 — 대본 에이전트
  *
- * V1 통과한 claims로 내레이션 대본을 집필한다.
  * Phase 0: beats 없음 — 모델이 Hook + 기승전결을 자체 구성.
- * Phase 2: A2(구성)가 생성한 beats를 받아 구조대로 작성.
+ * Phase 2: A2가 생성한 beats[]를 받아 비트 구조대로 집필.
  *
- * 입력: { claims[] } + canon(string) + feedback(string[])
- * 출력: { lines: string[], total_chars: number, estimated_seconds: number, decision_log: string }
+ * 입력: { claims[], beats? } + canon + feedback[]
+ * 출력: { lines[], total_chars, estimated_seconds, decision_log }
  */
 
 import { callClaude } from "../lib/claude-runner.js";
@@ -15,19 +14,20 @@ import { CONFIG } from "../config.js";
 const { durationSeconds, charsPerSecond, scriptLineMaxChars } = CONFIG.targets;
 
 /**
- * @param {{ claims: any[] }} input V1 통과한 리서치 페이로드
- * @param {string} canon CANON.md 전문
- * @param {string[]} [feedback] V3 실패 이유 목록
- * @returns {Promise<{ lines: string[], total_chars: number, estimated_seconds: number, decision_log: string }>}
+ * @param {{ claims: any[], beats?: any[] }} input
+ * @param {string} canon
+ * @param {string[]} [feedback]
  */
 export async function runA3(input, canon, feedback = []) {
-  const { claims } = input;
+  const { claims, beats } = input;
 
   const targetMin = Math.round(durationSeconds.min * charsPerSecond);
   const targetMax = Math.round(durationSeconds.max * charsPerSecond);
 
   const systemPrompt = buildSystem(canon);
-  const prompt = buildPrompt(claims, targetMin, targetMax, scriptLineMaxChars);
+  const prompt = beats?.length
+    ? buildPromptWithBeats(claims, beats, targetMin, targetMax, scriptLineMaxChars)
+    : buildPrompt(claims, targetMin, targetMax, scriptLineMaxChars);
 
   const { parsed } = await callClaude(prompt, { systemPrompt, feedback, maxTokens: 2048 });
 
@@ -67,6 +67,45 @@ ${claimList}
 4. claims의 수치를 왜곡하거나 과장하지 마라. 원본 그대로 사용하라.
 5. CANON의 톤·페르소나·금기를 엄수하라.
 6. TTS가 읽기 어려운 특수문자·이모지·영어 약어(풀어쓰기 가능한 경우)는 피하라.
+
+반드시 아래 JSON 형식으로만 응답하라. 다른 텍스트는 출력하지 마라:
+{
+  "lines": [
+    "줄1",
+    "줄2",
+    "..."
+  ]
+}
+`.trim();
+}
+
+function buildPromptWithBeats(claims, beats, targetMin, targetMax, maxLineChars) {
+  const claimList = claims
+    .map((c, i) => `[C${i + 1}] ${c.text} (${c.value})`)
+    .join("\n");
+
+  const beatList = beats
+    .map(
+      (b) =>
+        `[B${b.id}] ${b.purpose} — ${b.content} (${b.duration_seconds}초)`
+    )
+    .join("\n");
+
+  return `
+아래 비트시트 구조를 그대로 따라, 검증된 claims를 바탕으로 한국어 내레이션 대본을 작성하라.
+
+[비트시트] (이 순서와 흐름을 지켜라)
+${beatList}
+
+[검증된 Claims] (수치는 원본 그대로 사용하라)
+${claimList}
+
+[작성 규칙]
+1. 총 글자수(공백 제외): ${targetMin}자 이상 ${targetMax}자 이하
+2. 한 줄 최대 ${maxLineChars}자 (TTS 호흡 단위)
+3. 각 비트의 목적과 흐름을 충실히 구현하되, claims 수치를 왜곡하지 마라.
+4. CANON의 톤·페르소나·금기를 엄수하라.
+5. TTS가 읽기 어려운 특수문자·이모지는 피하라.
 
 반드시 아래 JSON 형식으로만 응답하라. 다른 텍스트는 출력하지 마라:
 {
