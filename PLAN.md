@@ -1,5 +1,14 @@
 # 유튜브 영상 자동제작 하네스 — 구현 계획
 
+## 버전 관리
+
+- **저장소:** https://github.com/rubbi1218-blip/0612Study.git
+- **커밋 단위:** 각 Phase 스텝(0-A, 0-B …) 완료 시
+- **절대 커밋 금지:** `.env` (API 키 포함)
+- **브랜치:** main(=master) 단일 브랜치로 운영, 스텝 완료마다 push
+
+---
+
 ## Context
 
 CLAUDE.md에 정의된 YouTube 영상 자동 제작 파이프라인을 구현한다. Claude Code(Conductor)가 A1~A6 에이전트를 순서대로 호출하고, V1~V6 검사 에이전트가 각 단계를 검증하며, state.json으로 중간 상태를 관리해 재시작 시 이어서 진행할 수 있게 한다.
