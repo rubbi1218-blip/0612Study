@@ -84,7 +84,7 @@ E:\클로드프로젝트_0612\
 |------|--------|------|
 | `.env` | API 키 4개 입력 | ✅ 완성 |
 | `CANON.md` | 채널 정체성 정의 | ✅ 완성 |
-| `package.json` | `"type":"module"`, 의존성 선언 (`@anthropic-ai/sdk`, `dotenv`) | ⬜ |
+| `package.json` | `"type":"module"`, 의존성 선언 (`@anthropic-ai/sdk`, `dotenv`, `assemblyai`) | ⬜ |
 | `.gitignore` | `.env`, `output/`, `node_modules/` 제외 | ⬜ |
 | `npm install` | 패키지 설치 | ⬜ |
 | `config.js` | API 키·상수 한 곳에 집중 (MAX_RETRIES, 목표 길이, 엔드포인트) | ⬜ |
@@ -139,14 +139,16 @@ E:\클로드프로젝트_0612\
 
 **V4 세부 검사 순서:**
 1. **파일 검사** — `audio.mp3` 존재 + FFmpeg probe로 실제 길이 확인 (추정치 ±20%)
-2. **STT 오프셋 측정** — AssemblyAI로 오디오 받아쓰기 → 첫 단어 실제 시작 시간 측정
+2. **STT 역검증** — AssemblyAI로 오디오 전체 받아쓰기 → script 원본과 대조
+   - 숫자·영어단어·연도 오독 감지 → FAIL 시 해당 줄 SSML 수정 후 A4 재생성
+3. **오프셋 측정 + 타임스탬프 보정** — STT 첫 단어 실제 시작 시간 vs ElevenLabs 첫 단어 시작 시간 비교
    ```
-   offset = STT 첫 단어 시작(ms) - ElevenLabs 첫 단어 시작(ms)
-   → payload에 sync_offset_ms 저장
+   sync_offset_ms = STT 첫 단어 start_ms - ElevenLabs 첫 단어 start_ms
    ```
-3. **오프셋 보정 적용** — `lib/timestamp-processor.js`가 ElevenLabs timestamps 전체에 offset 적용 → 보정된 timestamps를 payload에 저장
+   → `lib/timestamp-processor.js` 호출: ElevenLabs raw timestamps에 offset 적용
+   → 보정된 `subtitles.srt` + `subtitles.json` 생성 후 payload에 저장
 
-**완료 체크:** 더미 데이터로 PASS/FAIL 판정 각각 확인, sync_offset_ms 출력 확인
+**완료 체크:** 더미 오디오로 PASS/FAIL 각각 확인, `subtitles.json` 생성 및 sync_offset_ms 출력 확인
 
 ---
 
@@ -158,6 +160,7 @@ E:\클로드프로젝트_0612\
 | `lib/gemini-runner.js` | Gemini 2.5 Pro API + `googleSearch` 그라운딩 호출 | ⬜ |
 | `lib/claude-runner.js` | Anthropic SDK (`claude-opus-4-8`) 호출 | ⬜ |
 | `lib/elevenlabs-runner.js` | ElevenLabs `/with-timestamps` 엔드포인트 호출 | ⬜ |
+| `lib/assemblyai-runner.js` | AssemblyAI STT API — 오디오 → 단어별 타임스탬프 반환 | ⬜ |
 
 **완료 체크:** 각 runner 단독으로 API 핑 테스트 (짧은 입력으로 응답 수신 확인)
 
@@ -185,38 +188,39 @@ E:\클로드프로젝트_0612\
 
 ---
 
-### Phase 0-I: A4 음성 에이전트 + 타임스탬프 처리
-> 대본을 받아 MP3 + 보정된 자막 타임스탬프 생성
+### Phase 0-I: A4 음성 에이전트
+> 대본을 받아 MP3 + 단어별 raw timestamps만 생성 (보정은 V4에서)
 
 | 파일 | 할 일 | 상태 |
 |------|--------|------|
-| `agents/a4-voice.js` | ElevenLabs `/with-timestamps` → `audio.mp3` 저장 + 단어별 raw timestamps 추출 | ⬜ |
-| `lib/timestamp-processor.js` | 아래 3단계 처리 담당 | ⬜ |
+| `agents/a4-voice.js` | ElevenLabs `/with-timestamps` → `audio.mp3` 저장 + 단어별 raw timestamps만 payload에 저장 | ⬜ |
+| `lib/timestamp-processor.js` | V4에서 호출. 아래 흐름 담당 | ⬜ |
 
-**`lib/timestamp-processor.js` 처리 흐름:**
+**`lib/timestamp-processor.js` 처리 흐름 (V4에서 호출됨):**
 
 ```
+입력: ElevenLabs raw timestamps + sync_offset_ms (V4 STT 측정값)
+
 [1] 단어 그룹핑
-    ElevenLabs 단어별 timestamps
     → 한 줄 최대 20자 기준으로 단어 묶기
     → 자막 줄 배열 생성
     예) [{text:"금리 인하 전망", start_ms:1240, end_ms:2440}, ...]
 
-[2] 오프셋 보정 (V4에서 측정한 sync_offset_ms 주입)
+[2] 오프셋 보정
     line.start_ms += sync_offset_ms
     line.end_ms   += sync_offset_ms
 
-[3] SRT 파일 + Remotion용 JSON 동시 출력
+[3] SRT + Remotion JSON 동시 출력
     ├── subtitles.srt   (Phase 2 FFmpeg 폴백용)
     └── subtitles.json  (Remotion 컴포넌트용)
         [{text, startFrame, endFrame, words:[{text,startFrame,endFrame}]}]
-        ※ 프레임 변환: frame = Math.round(ms / 1000 * 30)  ← 30fps 기준
+        프레임 변환: frame = Math.round(ms / 1000 * 30)  ← 30fps 기준
 ```
 
 **완료 체크:**
-- `audio.mp3` 생성 확인
-- `subtitles.json` 생성, 첫 줄 startFrame이 실제 오디오 시작과 일치하는지 육안 확인
-- Windows Media Player로 음성 재생하면서 subtitles.json 타임코드 대조
+- `audio.mp3` 생성 확인 (raw timestamps는 payload에만 저장, 파일 없음)
+- V4 통과 후 `subtitles.json` 생성 확인
+- Windows Media Player로 음성 재생하면서 subtitles.json 타임코드 육안 대조
 
 ---
 
@@ -269,7 +273,8 @@ E:\클로드프로젝트_0612\
 ### Phase 2-B: 비주얼 에이전트
 | 파일 | 내용 |
 |------|------|
-| `agents/a5-visual.js` | 정지이미지: ChatGPT/Gemini, 영상클립: Veo. 차트는 AI 생성 금지 → 코드로 그림 |
+| `agents/a5-visual.js` | 정지이미지: ChatGPT/Gemini, 영상클립: Veo. 차트는 AI 생성 금지 |
+| `remotion/components/Chart.jsx` | **데이터 차트는 여기서만 생성** — Remotion 내장 SVG + `@visx/shape` 라이브러리 사용. A5가 차트 데이터(claims의 수치)를 JSON으로 넘기면 A6 렌더 시 Chart.jsx가 프레임에 직접 그림. AI 이미지 생성 절대 금지. |
 | `verifiers/v5-visual-check.js` | 비전 LLM: 이미지↔비트 내용 일치, 브랜드 일관성, 아티팩트 없음 |
 
 ### Phase 2-C: 렌더 에이전트 + 자막 싱크
@@ -375,6 +380,19 @@ subtitles.json 읽기
 
 ---
 
+## Conductor 실행 방법
+
+```bash
+# 기본 실행
+node conductor.js "주제" "이번 편 의도"
+
+# 예시
+node conductor.js "Fed 금리 인하와 한국 부동산" "시청자가 '나 이거 모르고 있었다'를 느끼게. 행동: ETF 검색"
+
+# 같은 주제를 완전히 새로 시작 (이전 state 무시)
+node conductor.js "주제" "의도" --fresh
+```
+
 ## Conductor 파이프라인 루프 (Phase 0)
 
 ```javascript
@@ -387,19 +405,37 @@ const PIPELINE = [
 for (const stage of PIPELINE) {
   if (state.isStageComplete(stage.name)) continue;  // 재개 시 건너뜀
 
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const out = await stage.producer({ input: prev, canon, feedback });
-    const result = await stage.verifier({ produced: out.payload, canon }); // 별개 인스턴스
-    if (result.passed) { state.markVerified(stage.name, result); break; }
-    feedback = result.reasons;
-  }
-  // 3회 실패 → escalate_to_human()
+  let feedback = null;
+  let passed = false;
 
-  const { approved, feedback: hFeedback } = await humanApprove(stage.name, payload);
-  if (!approved) { /* 피드백으로 재시도 */ continue; }
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const prev = state.getLastPayload(stage.inputFrom);
+    const out = await stage.producer({ input: prev, canon, feedback, attempt });
+    state.saveStageResult(stage.name, out.payload, out.decisionLog);
+
+    const result = await stage.verifier({ produced: out.payload, canon }); // 별개 인스턴스
+    if (result.passed) { state.markVerified(stage.name, result); passed = true; break; }
+    feedback = result.reasons;  // 다음 attempt에 피드백 전달
+  }
+
+  if (!passed) { escalateToHuman(stage.name, state); return; }  // 3회 실패 → 중단
+
+  // 사람 승인 게이트
+  const { approved, humanFeedback } = await humanApprove(stage.name, state.getPayload(stage.name));
+  if (!approved) {
+    // 사람 거부 → 피드백을 feedback에 넣고 이 stage를 처음부터 재시도
+    feedback = [humanFeedback];
+    state.resetStage(stage.name);  // status를 pending으로 되돌림
+    // 루프 재진입을 위해 인덱스를 되감음 (for-of 대신 while 또는 index 기반으로 구현)
+    continue; // ← 실제 구현 시 stage 재진입 로직 필요
+  }
   state.markHumanApproved(stage.name);
 }
 ```
+
+**사람 거부 재시도 구현 방식:**  
+`for-of` 대신 `while (stageIndex < PIPELINE.length)` + `stageIndex` 증가/감소로 구현.  
+사람이 `n` 입력 시 → `stageIndex` 유지 + `feedback` 세팅 → 루프 재진입 → 같은 stage 재실행.
 
 ---
 
