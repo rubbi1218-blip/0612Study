@@ -2,15 +2,20 @@
  * conductor.js — 파이프라인 메인 루너
  *
  * 사용법:
- *   node conductor.js "주제" "이번 편 의도" [--fresh]
+ *   node conductor.js "주제" "이번 편 의도" [--fresh] [--mock-voice]
  *
- * --fresh: 같은 주제의 이전 state를 무시하고 처음부터 시작
+ * --fresh:      같은 주제의 이전 state를 무시하고 처음부터 시작
+ * --mock-voice: ElevenLabs 대신 FFmpeg 테스트 음원으로 대체 (API 없이 파이프라인 검증용)
  */
 
 import path from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { runA1 } from "./agents/a1-research.js";
 import { runA3 } from "./agents/a3-script.js";
 import { runA4 } from "./agents/a4-voice.js";
+
+const execFileAsync = promisify(execFile);
 import { runV1 } from "./verifiers/v1-research-check.js";
 import { runV3 } from "./verifiers/v3-script-check.js";
 import { runV4 } from "./verifiers/v4-voice-check.js";
@@ -20,6 +25,39 @@ import { humanApprove, presentEscalation, closeGate } from "./lib/human-gate.js"
 import { CONFIG } from "./config.js";
 
 const MAX_RETRIES = CONFIG.MAX_RETRIES;
+
+// ── mock-voice 프로듀서 ─────────────────────────────────────
+// ElevenLabs 없이 FFmpeg로 테스트 음원을 생성한다.
+async function mockVoiceProduce(input, _canon, _feedback, episodeDir) {
+  const { lines, estimated_seconds } = input;
+  const audioPath = path.join(episodeDir, "audio.mp3");
+
+  // FFmpeg로 sine 톤 MP3 생성 (silence check 통과용)
+  await execFileAsync("ffmpeg", [
+    "-y",                            // 덮어쓰기
+    "-f", "lavfi",
+    "-i", `sine=frequency=220:duration=${estimated_seconds}`,
+    "-ar", "22050", "-ac", "1",
+    "-c:a", "libmp3lame", "-q:a", "4",
+    audioPath,
+  ]);
+
+  // 대본 줄 수 기준으로 타임스탬프 균등 배분
+  const secPerLine = estimated_seconds / lines.length;
+  const timestamps = lines.flatMap((line, i) => {
+    const words = line.split(/\s+/);
+    const lineStart = i * secPerLine;
+    const secPerWord = secPerLine / words.length;
+    return words.map((word, j) => ({
+      word,
+      start: lineStart + j * secPerWord,
+      end:   lineStart + (j + 1) * secPerWord,
+    }));
+  });
+
+  const decision_log = `[MOCK] ${lines.length}줄 → FFmpeg 테스트 음원 / 타임스탬프 ${timestamps.length}개`;
+  return { audio_path: audioPath, timestamps, estimated_seconds, sync_offset_ms: 0, decision_log };
+}
 
 // ── 파이프라인 정의 ─────────────────────────────────────────
 // produce / verify 시그니처를 stage마다 정규화한다.
@@ -60,9 +98,17 @@ const PIPELINE = [
 async function main() {
   const args         = process.argv.slice(2);
   const fresh        = args.includes("--fresh");
-  const filteredArgs = args.filter((a) => a !== "--fresh");
+  const mockVoice    = args.includes("--mock-voice");
+  const filteredArgs = args.filter((a) => !a.startsWith("--"));
   const topic        = filteredArgs[0];
   const intent       = filteredArgs[1] ?? "";
+
+  // mock-voice 모드: voice stage의 produce 함수를 교체
+  if (mockVoice) {
+    const voiceStage = PIPELINE.find((s) => s.name === "voice");
+    voiceStage.produce = mockVoiceProduce;
+    console.log("[conductor] ⚠️  mock-voice 모드: FFmpeg 테스트 음원 사용");
+  }
 
   if (!topic) {
     console.error('사용법: node conductor.js "주제" "이번 편 의도" [--fresh]');
