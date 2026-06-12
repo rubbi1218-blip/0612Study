@@ -16,7 +16,7 @@ import { runV3 } from "./verifiers/v3-script-check.js";
 import { runV4 } from "./verifiers/v4-voice-check.js";
 import { StateManager } from "./lib/state-manager.js";
 import { loadCanon } from "./lib/canon-loader.js";
-import { humanApprove, presentEscalation } from "./lib/human-gate.js";
+import { humanApprove, presentEscalation, closeGate } from "./lib/human-gate.js";
 import { CONFIG } from "./config.js";
 
 const MAX_RETRIES = CONFIG.MAX_RETRIES;
@@ -188,6 +188,7 @@ async function main() {
   }
 
   // ── 완료 ───────────────────────────────────────────────────
+  closeGate();
   const audioPath = state.getPayload("voice")?.audio_path ?? "(없음)";
   console.log(`\n${"=".repeat(60)}`);
   console.log("🎉 Phase 0 파이프라인 완료!");

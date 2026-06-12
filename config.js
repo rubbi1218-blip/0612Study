@@ -13,7 +13,7 @@ export const CONFIG = {
   apis: {
     gemini: {
       key: process.env.GEMINI_API_KEY,
-      model: "gemini-2.5-pro",
+      model: "gemini-2.5-flash",
       endpoint: "https://generativelanguage.googleapis.com/v1beta/models",
     },
     anthropic: {
