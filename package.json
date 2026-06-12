@@ -1,7 +1,7 @@
 {
   "name": "yt-harness",
   "version": "0.1.0",
-  "description": "유튜브 영상 자동제작 하네스 — Phase 0",
+  "description": "유튜브 영상 자동제작 하네스 — Phase 2",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
@@ -12,7 +12,16 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.52.0",
+    "@remotion/bundler": "^4.0.475",
+    "@remotion/renderer": "^4.0.475",
+    "@visx/axis": "^4.0.0",
+    "@visx/group": "^4.0.0",
+    "@visx/scale": "^4.0.0",
+    "@visx/shape": "^4.0.0",
     "assemblyai": "^4.0.0",
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "remotion": "^4.0.475"
   }
 }

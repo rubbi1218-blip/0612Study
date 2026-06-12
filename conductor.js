@@ -9,6 +9,7 @@
  */
 
 import path from "path";
+import fs from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { runA1 } from "./agents/a1-research.js";
@@ -16,6 +17,7 @@ import { runA2 } from "./agents/a2-structure.js";
 import { runA3 } from "./agents/a3-script.js";
 import { runA4 } from "./agents/a4-voice.js";
 import { runA5 } from "./agents/a5-visual.js";
+import { runA6 } from "./agents/a6-render.js";
 
 const execFileAsync = promisify(execFile);
 import { runV1 } from "./verifiers/v1-research-check.js";
@@ -23,12 +25,43 @@ import { runV2 } from "./verifiers/v2-structure-check.js";
 import { runV3 } from "./verifiers/v3-script-check.js";
 import { runV4 } from "./verifiers/v4-voice-check.js";
 import { runV5 } from "./verifiers/v5-visual-check.js";
+import { runV6 } from "./verifiers/v6-render-check.js";
 import { StateManager } from "./lib/state-manager.js";
 import { loadCanon } from "./lib/canon-loader.js";
 import { humanApprove, presentEscalation, closeGate } from "./lib/human-gate.js";
 import { CONFIG } from "./config.js";
 
 const MAX_RETRIES = CONFIG.MAX_RETRIES;
+
+// ── mock-render 프로듀서 ────────────────────────────────────
+// Remotion + Chrome 없이 FFmpeg로 최소 MP4를 생성한다 (파이프라인 검증용)
+async function mockRenderProduce(input, _canon, _feedback, episodeDir) {
+  const { voice = {}, structure = {} } = input;
+  const audioPath = voice?.audio_path ?? "";
+  const totalSecs = Math.max(
+    structure?.beats?.reduce((s, b) => s + (b.duration_seconds ?? 0), 0) ?? 0,
+    voice?.estimated_seconds ?? 60,
+    1
+  );
+  const totalFrames = Math.round(totalSecs * CONFIG.targets.fps);
+  const outputPath  = path.join(episodeDir, "video.mp4");
+
+  const ffArgs = [
+    "-y",
+    "-f", "lavfi",
+    "-i", `color=c=0x0a0a0a:size=1080x1920:rate=${CONFIG.targets.fps}:duration=${totalSecs}`,
+  ];
+  // 오디오가 있으면 합성
+  if (audioPath && fs.existsSync(audioPath)) {
+    ffArgs.push("-i", audioPath, "-c:a", "aac", "-shortest");
+  }
+  ffArgs.push("-c:v", "libx264", "-preset", "ultrafast", outputPath);
+
+  await execFileAsync("ffmpeg", ffArgs);
+
+  const decision_log = `[MOCK] ${totalFrames}프레임 / ${totalSecs.toFixed(1)}초 → dark MP4`;
+  return { video_path: outputPath, total_frames: totalFrames, total_seconds: totalSecs, decision_log };
+}
 
 // ── mock-visual 프로듀서 ────────────────────────────────────
 // Imagen API 없이 FFmpeg로 placeholder PNG를 생성한다 (파이프라인 검증용)
@@ -146,6 +179,19 @@ const PIPELINE = [
       return await runV5(payload, beats, _canon);
     },
   },
+  {
+    name: "render",
+    inputFrom: "visual",
+    async produce(input, canon, feedback, episodeDir, state) {
+      // render는 voice + structure + visual 세 스테이지 데이터가 모두 필요
+      const voice     = state?.getPayload("voice")     ?? {};
+      const structure = state?.getPayload("structure") ?? {};
+      return await runA6({ voice, structure, visual: input }, canon, feedback, episodeDir);
+    },
+    async verify(payload) {
+      return await runV6(payload);
+    },
+  },
 ];
 
 // ── 진입점 ──────────────────────────────────────────────────
@@ -169,6 +215,13 @@ async function main() {
     const visualStage = PIPELINE.find((s) => s.name === "visual");
     visualStage.produce = mockVisualProduce;
     console.log("[conductor] ⚠️  mock-visual 모드: FFmpeg placeholder 이미지 사용");
+  }
+
+  const mockRender = args.includes("--mock-render");
+  if (mockRender) {
+    const renderStage = PIPELINE.find((s) => s.name === "render");
+    renderStage.produce = mockRenderProduce;
+    console.log("[conductor] ⚠️  mock-render 모드: FFmpeg dark MP4 사용 (Remotion 없이)");
   }
 
   if (!topic) {
@@ -297,11 +350,13 @@ async function main() {
   // ── 완료 ───────────────────────────────────────────────────
   closeGate();
   const audioPath = state.getPayload("voice")?.audio_path ?? "(없음)";
+  const videoPath = state.getPayload("render")?.video_path ?? "(없음)";
   console.log(`\n${"=".repeat(60)}`);
   console.log("🎉 파이프라인 완료!");
   console.log(`   에피소드: ${state.episodeId}`);
   console.log(`   출력:     ${episodeDir}`);
   console.log(`   음성:     ${audioPath}`);
+  console.log(`   영상:     ${videoPath}`);
   console.log("=".repeat(60));
 }
 
