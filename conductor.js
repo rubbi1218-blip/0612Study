@@ -15,18 +15,44 @@ import { runA1 } from "./agents/a1-research.js";
 import { runA2 } from "./agents/a2-structure.js";
 import { runA3 } from "./agents/a3-script.js";
 import { runA4 } from "./agents/a4-voice.js";
+import { runA5 } from "./agents/a5-visual.js";
 
 const execFileAsync = promisify(execFile);
 import { runV1 } from "./verifiers/v1-research-check.js";
 import { runV2 } from "./verifiers/v2-structure-check.js";
 import { runV3 } from "./verifiers/v3-script-check.js";
 import { runV4 } from "./verifiers/v4-voice-check.js";
+import { runV5 } from "./verifiers/v5-visual-check.js";
 import { StateManager } from "./lib/state-manager.js";
 import { loadCanon } from "./lib/canon-loader.js";
 import { humanApprove, presentEscalation, closeGate } from "./lib/human-gate.js";
 import { CONFIG } from "./config.js";
 
 const MAX_RETRIES = CONFIG.MAX_RETRIES;
+
+// ── mock-visual 프로듀서 ────────────────────────────────────
+// Imagen API 없이 FFmpeg로 placeholder PNG를 생성한다 (파이프라인 검증용)
+async function mockVisualProduce(input, _canon, _feedback, episodeDir) {
+  const { beats } = input;
+  const assets = [];
+
+  for (const beat of beats) {
+    const filename = `beat-${beat.id}.png`;
+    const outputPath = path.join(episodeDir, filename);
+
+    await execFileAsync("ffmpeg", [
+      "-y", "-f", "lavfi",
+      "-i", "color=c=0x1a1a2e:size=1080x1920:duration=0.033",
+      "-vframes", "1",
+      outputPath,
+    ]);
+
+    assets.push({ beat_id: beat.id, type: "image", file_path: outputPath, is_mock: true });
+  }
+
+  const decision_log = `[MOCK] beats ${beats.length}개 → placeholder PNG 생성`;
+  return { assets, decision_log };
+}
 
 // ── mock-voice 프로듀서 ─────────────────────────────────────
 // ElevenLabs 없이 FFmpeg로 테스트 음원을 생성한다.
@@ -107,6 +133,19 @@ const PIPELINE = [
       return await runV4(payload);
     },
   },
+  {
+    name: "visual",
+    inputFrom: "script",
+    async produce(input, canon, feedback, episodeDir, state) {
+      const beats = state?.getPayload("structure")?.beats ?? [];
+      const claims = state?.getPayload("research")?.claims ?? [];
+      return await runA5({ ...input, beats, claims }, canon, feedback, episodeDir);
+    },
+    async verify(payload, _canon, state) {
+      const beats = state?.getPayload("structure")?.beats ?? [];
+      return await runV5(payload, beats, _canon);
+    },
+  },
 ];
 
 // ── 진입점 ──────────────────────────────────────────────────
@@ -123,6 +162,13 @@ async function main() {
     const voiceStage = PIPELINE.find((s) => s.name === "voice");
     voiceStage.produce = mockVoiceProduce;
     console.log("[conductor] ⚠️  mock-voice 모드: FFmpeg 테스트 음원 사용");
+  }
+
+  const mockVisual = args.includes("--mock-visual");
+  if (mockVisual) {
+    const visualStage = PIPELINE.find((s) => s.name === "visual");
+    visualStage.produce = mockVisualProduce;
+    console.log("[conductor] ⚠️  mock-visual 모드: FFmpeg placeholder 이미지 사용");
   }
 
   if (!topic) {
@@ -252,7 +298,7 @@ async function main() {
   closeGate();
   const audioPath = state.getPayload("voice")?.audio_path ?? "(없음)";
   console.log(`\n${"=".repeat(60)}`);
-  console.log("🎉 Phase 0 파이프라인 완료!");
+  console.log("🎉 파이프라인 완료!");
   console.log(`   에피소드: ${state.episodeId}`);
   console.log(`   출력:     ${episodeDir}`);
   console.log(`   음성:     ${audioPath}`);
