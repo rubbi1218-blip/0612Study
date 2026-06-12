@@ -2,7 +2,7 @@ import "dotenv/config";
 
 export const CONFIG = {
   MAX_RETRIES: 3,
-  PHASE: 0,
+  PHASE: 2,
 
   paths: {
     canon: "CANON.md",
