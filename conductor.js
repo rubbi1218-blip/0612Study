@@ -29,6 +29,7 @@ import { runV6 } from "./verifiers/v6-render-check.js";
 import { runM1 } from "./verifiers/m1-final-check.js";
 import { computeRiskScore } from "./lib/risk-scorer.js";
 import { canAutoApprove } from "./lib/confidence-gate.js";
+import { logCalibration, summarizeCalibration } from "./lib/calibration-logger.js";
 import { StateManager } from "./lib/state-manager.js";
 import { loadCanon } from "./lib/canon-loader.js";
 import { humanApprove, presentEscalation, closeGate } from "./lib/human-gate.js";
@@ -343,6 +344,11 @@ async function main() {
       console.log(
         `[${stage.name}] 🤖 자동 승인 (risk ${riskInfo.score}/${riskInfo.level}, calibration 충분)`
       );
+      logCalibration({
+        episodeId: state.episodeId, stage: stage.name,
+        verifierPassed: true, humanApproved: true,
+        riskScore: riskInfo.score, riskLevel: riskInfo.level,
+      });
       state.markStageHumanApproved(stage.name);
       stageIndex++;
     } else {
@@ -351,6 +357,12 @@ async function main() {
         stage.name,
         state.getPayload(stage.name)
       );
+      logCalibration({
+        episodeId: state.episodeId, stage: stage.name,
+        verifierPassed: true, humanApproved: approved,
+        humanFeedback: approved ? "" : humanFeedback,
+        riskScore: riskInfo.score, riskLevel: riskInfo.level,
+      });
       if (approved) {
         state.markStageHumanApproved(stage.name);
         stageIndex++;
@@ -410,6 +422,19 @@ async function main() {
   console.log(`   출력:     ${episodeDir}`);
   console.log(`   음성:     ${audioPath}`);
   console.log(`   영상:     ${videoPath}`);
+
+  // Calibration 요약 출력
+  const calSummary = summarizeCalibration();
+  const calEntries = Object.entries(calSummary);
+  if (calEntries.length > 0) {
+    console.log("\n[Calibration] 스테이지별 정확도:");
+    for (const [s, d] of calEntries) {
+      console.log(`   ${s}: ${d.count}건, 일치율 ${(d.accuracy * 100).toFixed(0)}%`);
+    }
+  }
+
+  // Canary 안내
+  console.log("\n[Canary] 업로드 후 유튜브 스튜디오에서 초기 지표를 30분간 확인하십시오.");
   console.log("=".repeat(60));
 }
 
