@@ -78,8 +78,10 @@ const PIPELINE = [
     async produce(input, canon, feedback, _dir) {
       return await runA3(input, canon, feedback);
     },
-    verify(payload) {
-      return runV3(payload);
+    verify(payload, _canon, state) {
+      // Phase 1: claims를 함께 전달해 수치 대조 수행
+      const claims = state?.getPayload("research")?.claims ?? [];
+      return runV3(payload, claims);
     },
   },
   {
@@ -191,7 +193,7 @@ async function main() {
       const payload = state.getPayload(stage.name);
       let result;
       try {
-        result = await stage.verify(payload);
+        result = await stage.verify(payload, canon, state);
       } catch (err) {
         console.error(`[${stage.name}] ❌ verify 오류: ${err.message}`);
         feedback = [err.message];
