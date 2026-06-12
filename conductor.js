@@ -26,6 +26,7 @@ import { runV3 } from "./verifiers/v3-script-check.js";
 import { runV4 } from "./verifiers/v4-voice-check.js";
 import { runV5 } from "./verifiers/v5-visual-check.js";
 import { runV6 } from "./verifiers/v6-render-check.js";
+import { runM1 } from "./verifiers/m1-final-check.js";
 import { StateManager } from "./lib/state-manager.js";
 import { loadCanon } from "./lib/canon-loader.js";
 import { humanApprove, presentEscalation, closeGate } from "./lib/human-gate.js";
@@ -345,6 +346,43 @@ async function main() {
       humanRejFeedback = [humanFeedback];
       // stageIndex 유지 → 같은 stage 재실행
     }
+  }
+
+  // ── M1 최종 검사 ───────────────────────────────────────────
+  console.log("\n[M1] 최종 종단 검사 시작...");
+  let m1Passed = false;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const m1Result = await runM1(state, canon, topic);
+    if (m1Result.passed) {
+      m1Passed = true;
+      console.log("[M1] ✅ 최종 검사 통과");
+      break;
+    }
+    console.log(`[M1] ❌ 최종 검사 실패 (attempt ${attempt}/${MAX_RETRIES}):`);
+    m1Result.reasons.forEach((r, i) => console.log(`   ${i + 1}. ${r}`));
+    if (attempt === MAX_RETRIES) {
+      state.addEscalation("m1-final", m1Result.reasons);
+      presentEscalation("M1 최종검사", m1Result.reasons, state.statePath);
+      closeGate();
+      process.exit(1);
+    }
+  }
+
+  // ── 사람 최종 승인 (#2) ────────────────────────────────────
+  {
+    const finalPayload = {
+      episode_id: state.episodeId,
+      video_path: state.getPayload("render")?.video_path,
+      total_seconds: state.getPayload("render")?.total_seconds,
+    };
+    const { approved, humanFeedback } = await humanApprove("final", finalPayload);
+    if (!approved) {
+      console.log(`\n[final] 사람 거부. 피드백: "${humanFeedback}"`);
+      console.log("[final] 수정 후 적절한 단계부터 재실행하십시오.");
+      closeGate();
+      process.exit(0);
+    }
+    console.log("[final] ✅ 최종 승인 완료");
   }
 
   // ── 완료 ───────────────────────────────────────────────────
