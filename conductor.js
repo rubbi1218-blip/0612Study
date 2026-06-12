@@ -12,11 +12,13 @@ import path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { runA1 } from "./agents/a1-research.js";
+import { runA2 } from "./agents/a2-structure.js";
 import { runA3 } from "./agents/a3-script.js";
 import { runA4 } from "./agents/a4-voice.js";
 
 const execFileAsync = promisify(execFile);
 import { runV1 } from "./verifiers/v1-research-check.js";
+import { runV2 } from "./verifiers/v2-structure-check.js";
 import { runV3 } from "./verifiers/v3-script-check.js";
 import { runV4 } from "./verifiers/v4-voice-check.js";
 import { StateManager } from "./lib/state-manager.js";
@@ -73,13 +75,24 @@ const PIPELINE = [
     },
   },
   {
-    name: "script",
+    name: "structure",
     inputFrom: "research",
-    async produce(input, canon, feedback, _dir) {
-      return await runA3(input, canon, feedback);
+    async produce(input, canon, feedback, _dir, _state) {
+      return await runA2(input, canon, feedback);
+    },
+    async verify(payload, canon, _state) {
+      return await runV2(payload, canon);
+    },
+  },
+  {
+    name: "script",
+    inputFrom: "structure",
+    async produce(input, canon, feedback, _dir, state) {
+      // input = structure payload (beats). claims는 research에서 조회
+      const claims = state?.getPayload("research")?.claims ?? [];
+      return await runA3({ ...input, claims }, canon, feedback);
     },
     verify(payload, _canon, state) {
-      // Phase 1: claims를 함께 전달해 수치 대조 수행
       const claims = state?.getPayload("research")?.claims ?? [];
       return runV3(payload, claims);
     },
@@ -175,7 +188,7 @@ async function main() {
         state.markStageStart(stage.name);
         const input = state.getLastPayload(stage.inputFrom);
         try {
-          const produced = await stage.produce(input, canon, feedback, episodeDir);
+          const produced = await stage.produce(input, canon, feedback, episodeDir, state);
           state.saveStageResult(stage.name, produced, produced.decision_log ?? "");
           console.log(`[${stage.name}] 📝 produce 완료. ${produced.decision_log ?? ""}`);
         } catch (err) {
