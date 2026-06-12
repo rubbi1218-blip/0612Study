@@ -1,0 +1,16 @@
+# API 키 — 절대 커밋 금지
+.env
+.env.local
+.env.*.local
+
+# 생성된 에피소드 출력물
+output/
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# 임시 파일
+*.tmp
+*.temp
+state.json.tmp
