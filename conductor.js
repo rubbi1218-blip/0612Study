@@ -2,10 +2,11 @@
  * conductor.js — 파이프라인 메인 루너
  *
  * 사용법:
- *   node conductor.js "주제" "이번 편 의도" [--fresh] [--mock-voice]
+ *   node conductor.js "주제" "이번 편 의도" [--fresh] [--mock-voice] [--auto-approve]
  *
- * --fresh:      같은 주제의 이전 state를 무시하고 처음부터 시작
- * --mock-voice: ElevenLabs 대신 FFmpeg 테스트 음원으로 대체 (API 없이 파이프라인 검증용)
+ * --fresh:        같은 주제의 이전 state를 무시하고 처음부터 시작
+ * --mock-voice:   ElevenLabs 대신 FFmpeg 테스트 음원으로 대체 (API 없이 파이프라인 검증용)
+ * --auto-approve: 모든 사람 게이트를 자동 승인 (통합 테스트용 — piped stdin EOF 우회)
  */
 
 import path from "path";
@@ -206,6 +207,7 @@ async function main() {
   const args         = process.argv.slice(2);
   const fresh        = args.includes("--fresh");
   const mockVoice    = args.includes("--mock-voice");
+  const autoApprove  = args.includes("--auto-approve");
   const filteredArgs = args.filter((a) => !a.startsWith("--"));
   const topic        = filteredArgs[0];
   const intent       = filteredArgs[1] ?? "";
@@ -229,6 +231,10 @@ async function main() {
     const renderStage = PIPELINE.find((s) => s.name === "render");
     renderStage.produce = mockRenderProduce;
     console.log("[conductor] ⚠️  mock-render 모드: FFmpeg dark MP4 사용 (Remotion 없이)");
+  }
+
+  if (autoApprove) {
+    console.log("[conductor] ⚠️  auto-approve 모드: 모든 사람 게이트 자동 승인 (통합 테스트용)");
   }
 
   if (!topic) {
@@ -264,10 +270,9 @@ async function main() {
     // ── 검증 통과했지만 사람 승인 미완료 (재개 시) ─────────
     if (stageData.status === "verified" && !stageData.human_approved) {
       console.log(`\n[${stage.name}] ⏸ 검증 완료, 사람 승인 대기`);
-      const { approved, humanFeedback } = await humanApprove(
-        stage.name,
-        state.getPayload(stage.name)
-      );
+      const { approved, humanFeedback } = autoApprove
+        ? (console.log(`[${stage.name}] 🤖 [auto-approve] 자동 승인`), { approved: true, humanFeedback: null })
+        : await humanApprove(stage.name, state.getPayload(stage.name));
       if (approved) {
         state.markStageHumanApproved(stage.name);
         stageIndex++;
@@ -361,10 +366,9 @@ async function main() {
       stageIndex++;
     } else {
       console.log(`[${stage.name}] ⚠️  위험점수: ${riskInfo.score} (${riskInfo.level})`);
-      const { approved, humanFeedback } = await humanApprove(
-        stage.name,
-        state.getPayload(stage.name)
-      );
+      const { approved, humanFeedback } = autoApprove
+        ? (console.log(`[${stage.name}] 🤖 [auto-approve] 자동 승인`), { approved: true, humanFeedback: null })
+        : await humanApprove(stage.name, state.getPayload(stage.name));
       logCalibration({
         episodeId: state.episodeId, stage: stage.name,
         verifierPassed: true, humanApproved: approved,
@@ -410,7 +414,9 @@ async function main() {
       video_path: state.getPayload("render")?.video_path,
       total_seconds: state.getPayload("render")?.total_seconds,
     };
-    const { approved, humanFeedback } = await humanApprove("final", finalPayload);
+    const { approved, humanFeedback } = autoApprove
+      ? (console.log("[final] 🤖 [auto-approve] 최종 자동 승인"), { approved: true, humanFeedback: null })
+      : await humanApprove("final", finalPayload);
     if (!approved) {
       console.log(`\n[final] 사람 거부. 피드백: "${humanFeedback}"`);
       console.log("[final] 수정 후 적절한 단계부터 재실행하십시오.");
