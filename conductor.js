@@ -33,7 +33,10 @@ import { canAutoApprove } from "./lib/confidence-gate.js";
 import { logCalibration, summarizeCalibration } from "./lib/calibration-logger.js";
 import { StateManager } from "./lib/state-manager.js";
 import { loadCanon } from "./lib/canon-loader.js";
-import { humanApprove, presentEscalation, closeGate } from "./lib/human-gate.js";
+const _wsMode = process.argv.includes("--ws");
+const { humanApprove, presentEscalation, closeGate } = await import(
+  _wsMode ? "./lib/ws-gate.js" : "./lib/human-gate.js"
+);
 import { CONFIG } from "./config.js";
 
 const MAX_RETRIES = CONFIG.MAX_RETRIES;
@@ -431,6 +434,15 @@ async function main() {
   const audioPath = state.getPayload("voice")?.audio_path ?? "(없음)";
   const videoPath = state.getPayload("render")?.video_path ?? "(없음)";
   console.log(`\n${"=".repeat(60)}`);
+  // WS 모드: 브라우저에 완료 신호 전송
+  if (_wsMode) {
+    process.send({
+      type: "complete",
+      episodeId: state.episodeId,
+      videoPath: state.getPayload("render")?.video_path ?? null,
+      totalSeconds: state.getPayload("render")?.total_seconds ?? null,
+    });
+  }
   console.log("🎉 파이프라인 완료!");
   console.log(`   에피소드: ${state.episodeId}`);
   console.log(`   출력:     ${episodeDir}`);
