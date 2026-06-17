@@ -333,7 +333,55 @@
     </div>
   </div>
 
-  <!-- ⑦ 자동 진행 중 (비주얼+렌더+M1) -->
+  <!-- ⑦ 편집 비주얼 (비트별 이미지 생성/편집/재생성) -->
+  <div class="page" id="p-visual-edit">
+    <div class="topbar">
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
+      <span class="tb-topic" id="ve-topic"></span>
+      <div class="tb-right">
+        <span class="badge badge-wait" id="ve-badge">편집 비주얼</span>
+      </div>
+    </div>
+    <div class="stepbar" id="ve-stepbar"></div>
+
+    <!-- 헤더: 제목 + 이미지 모델 전역 선택 -->
+    <div class="ve-header">
+      <div class="ve-header-left">
+        <div class="ve-title">✏️ 편집 비주얼</div>
+        <div class="ve-subtitle" id="ve-subtitle">비트별 이미지를 생성하고 편집하세요</div>
+      </div>
+      <div class="ve-header-right">
+        <div class="ve-field-label">이미지 생성 모델</div>
+        <div class="model-btns">
+          <button class="model-btn sel" data-group="ve-imgmodel" data-val="gemini" onclick="App.selectModel(this)">Gemini Imagen</button>
+          <button class="model-btn" data-group="ve-imgmodel" data-val="chatgpt" onclick="App.selectModel(this)">ChatGPT</button>
+          <button class="model-btn" data-group="ve-imgmodel" data-val="veo" onclick="App.selectModel(this)">Veo 2</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 비트 카드 그리드 -->
+    <div class="ve-grid" id="ve-grid"></div>
+
+    <!-- 하단 고정 바: 렌더 엔진 + 전체생성 + 렌더시작 -->
+    <div class="ve-footer">
+      <div class="ve-footer-left">
+        <div class="ve-field-label">렌더 엔진</div>
+        <div class="model-btns">
+          <button class="model-btn sel" data-group="renderer" data-val="remotion" onclick="App.selectModel(this)">Remotion</button>
+          <button class="model-btn" data-group="renderer" data-val="hyperframes" onclick="App.selectModel(this)">HyperFrames</button>
+        </div>
+      </div>
+      <div class="ve-footer-right">
+        <div class="ve-gen-progress" id="ve-gen-progress"></div>
+        <button class="btn-gen-all" onclick="App.generateAllBeats()">⚡ 전체 생성</button>
+        <button class="btn-render-start" onclick="App.approveVisualEdit()">▶ 렌더 시작</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑧ 자동 진행 중 (렌더+M1) -->
   <div class="page" id="p-auto">
     <div class="topbar">
       <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>

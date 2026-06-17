@@ -276,6 +276,12 @@ function handleMessage(msg) {
         renderVoice(msg.payload);
         showPage("p-gate-voice");
 
+      } else if (msg.stage === "visual") {
+        buildStepbar("ve-stepbar", "visual", done);
+        document.getElementById("ve-topic").textContent = State.topic;
+        renderVisualEdit(msg.payload);
+        showPage("p-visual-edit");
+
       } else if (msg.stage === "final") {
         buildStepbar("fin-stepbar", "render", STEPS.map(s => s.id));
         document.getElementById("fin-topic").textContent = State.topic;
@@ -426,6 +432,111 @@ function renderFinal(payload) {
   document.getElementById("fin-title").textContent = State.topic;
   const secs = payload?.total_seconds ?? 0;
   document.getElementById("fin-meta").textContent = `${Math.round(secs)}초 · 1080×1920 · 30fps`;
+}
+
+// ── 편집 비주얼 ──────────────────────────────────────
+
+const VE = {
+  assets: {},      // { beatId: { status:"none"|"gen"|"ok"|"err", asset, model } }
+  beats: [],       // structure payload의 beats
+  lines: [],       // script payload의 lines
+  claims: [],      // research payload의 claims
+  generating: new Set(),
+};
+
+function renderVisualEdit(visualPayload) {
+  const beats  = State.gatePayloads.structure?.beats ?? [];
+  const lines  = State.gatePayloads.script?.lines ?? [];
+  const claims = State.gatePayloads.research?.claims ?? [];
+  VE.beats  = beats;
+  VE.lines  = lines;
+  VE.claims = claims;
+  VE.assets = {};
+
+  // A5가 이미 생성한 assets를 초기 상태로 로드
+  for (const a of (visualPayload.assets ?? [])) {
+    VE.assets[a.beat_id] = { status: "ok", asset: a, model: "gemini" };
+  }
+
+  const grid = document.getElementById("ve-grid");
+  if (!grid) return;
+  grid.innerHTML = beats.map((beat, i) => {
+    const scriptLine = lines[i] ?? "";
+    return `
+<div class="ve-beat-card ${VE.assets[beat.id] ? "ve-done" : ""}" id="ve-card-${beat.id}">
+  <div class="ve-beat-header">
+    <div class="ve-beat-num">${beat.id}</div>
+    <div class="ve-beat-purpose">${esc(beat.purpose ?? beat.content ?? "")}</div>
+    <div class="ve-beat-dur">≈ ${beat.estimated_sec ?? "?"}초</div>
+  </div>
+  <div class="ve-beat-body">
+    <div class="ve-thumb" id="ve-thumb-${beat.id}">${veThumbHtml(beat.id)}</div>
+    <div class="ve-beat-right">
+      <div class="ve-beat-script">${esc(scriptLine)}</div>
+      <div class="ve-beat-models model-btns">
+        <button class="model-btn ${State.models["ve-imgmodel"]==="gemini"||!State.models["ve-imgmodel"]?"sel":""}" data-group="ve-imgmodel-${beat.id}" data-val="gemini" onclick="App.selectModel(this)">Gemini</button>
+        <button class="model-btn ${State.models["ve-imgmodel"]==="chatgpt"?"sel":""}" data-group="ve-imgmodel-${beat.id}" data-val="chatgpt" onclick="App.selectModel(this)">ChatGPT</button>
+        <button class="model-btn ${State.models["ve-imgmodel"]==="veo"?"sel":""}" data-group="ve-imgmodel-${beat.id}" data-val="veo" onclick="App.selectModel(this)">Veo 2</button>
+      </div>
+      <div class="ve-beat-actions">
+        ${VE.assets[beat.id]
+          ? `<button class="btn-regen-beat" onclick="App.generateBeat(${beat.id})">↺ 재생성</button>`
+          : `<button class="btn-gen-beat" id="ve-btn-${beat.id}" onclick="App.generateBeat(${beat.id})">⚡ 생성</button>`
+        }
+        <span class="ve-beat-status ${VE.assets[beat.id] ? "ok" : ""}" id="ve-status-${beat.id}">
+          ${VE.assets[beat.id] ? (VE.assets[beat.id].asset.type === "chart" ? "📊 차트" : "✅ 완료") : "생성 전"}
+        </span>
+      </div>
+    </div>
+  </div>
+</div>`;
+  }).join("");
+
+  _veUpdateProgress();
+}
+
+function veThumbHtml(beatId) {
+  const entry = VE.assets[beatId];
+  if (!entry) return `<div class="ve-thumb-empty">이미지 없음</div>`;
+  if (entry.status === "gen") return `<div class="ve-thumb-spinner"></div>`;
+  if (entry.asset?.type === "chart") return `<div class="ve-thumb-chart">📊<span>차트</span></div>`;
+  if (entry.asset?.file_path) {
+    const url = "/output/" + entry.asset.file_path.replace(/\\/g, "/").split("/output/")[1];
+    return `<img src="${url}" alt="beat ${beatId}">`;
+  }
+  return `<div class="ve-thumb-empty">오류</div>`;
+}
+
+function _veRefreshCard(beatId) {
+  const card   = document.getElementById(`ve-card-${beatId}`);
+  const thumb  = document.getElementById(`ve-thumb-${beatId}`);
+  const status = document.getElementById(`ve-status-${beatId}`);
+  const btn    = document.getElementById(`ve-btn-${beatId}`);
+  const entry  = VE.assets[beatId];
+  if (!card) return;
+
+  card.classList.toggle("ve-generating", entry?.status === "gen");
+  card.classList.toggle("ve-done",       entry?.status === "ok");
+  if (thumb)  thumb.innerHTML  = veThumbHtml(beatId);
+  if (status) {
+    status.className = "ve-beat-status " + (entry?.status === "ok" ? "ok" : entry?.status === "err" ? "err" : entry?.status === "gen" ? "gen" : "");
+    status.textContent = entry?.status === "ok"
+      ? (entry.asset?.type === "chart" ? "📊 차트" : "✅ 완료")
+      : entry?.status === "err" ? "❌ 실패"
+      : entry?.status === "gen" ? "생성 중..."
+      : "생성 전";
+  }
+  // 생성 전→생성완료 시 버튼을 재생성 버튼으로 교체
+  if (btn && entry?.status === "ok") {
+    btn.outerHTML = `<button class="btn-regen-beat" onclick="App.generateBeat(${beatId})">↺ 재생성</button>`;
+  }
+}
+
+function _veUpdateProgress() {
+  const total = VE.beats.length;
+  const done  = Object.values(VE.assets).filter(a => a.status === "ok").length;
+  const el = document.getElementById("ve-gen-progress");
+  if (el) el.textContent = total ? `${done} / ${total} 완료` : "";
 }
 
 // ── App 공개 인터페이스 ───────────────────────────────
@@ -763,6 +874,59 @@ const App = {
     // 시작 화면으로 돌아가 이어하기 카드 표시
     loadResumeCard();
     showPage("p-start");
+  },
+
+  // ── 편집 비주얼 ──────────────────────────────────────
+  async generateBeat(beatId) {
+    if (VE.generating.has(beatId)) return;
+    const beat = VE.beats.find(b => b.id === beatId);
+    if (!beat) return;
+
+    // 모델 감지: 해당 카드의 선택 또는 전역 선택
+    const cardGroup = `ve-imgmodel-${beatId}`;
+    const cardBtn = document.querySelector(`.model-btn.sel[data-group="${cardGroup}"]`);
+    const model = cardBtn?.dataset.val ?? State.models["ve-imgmodel"] ?? "gemini";
+
+    VE.generating.add(beatId);
+    VE.assets[beatId] = { status: "gen", asset: null, model };
+    _veRefreshCard(beatId);
+
+    try {
+      const resp = await fetch("/api/visual/beat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ episodeId: State.episodeId, beat, claims: VE.claims }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        VE.assets[beatId] = { status: "ok", asset: data.asset, model };
+      } else {
+        VE.assets[beatId] = { status: "err", asset: null, error: data.error };
+      }
+    } catch (err) {
+      VE.assets[beatId] = { status: "err", asset: null, error: err.message };
+    } finally {
+      VE.generating.delete(beatId);
+      _veRefreshCard(beatId);
+      _veUpdateProgress();
+    }
+  },
+
+  async generateAllBeats() {
+    const btn = document.querySelector(".btn-gen-all");
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ 생성 중..."; }
+    const pending = VE.beats.filter(b => !VE.assets[b.id] || VE.assets[b.id].status === "err");
+    for (const beat of pending) {
+      await App.generateBeat(beat.id);
+    }
+    if (btn) { btn.disabled = false; btn.textContent = "⚡ 전체 생성"; }
+  },
+
+  approveVisualEdit() {
+    if (State.ws?.readyState === WebSocket.OPEN) {
+      State.ws.send(JSON.stringify({ type: "approve", stage: "visual" }));
+    }
+    showPage("p-auto");
   },
 
   // ── 에피소드 뷰어 ────────────────────────────────────

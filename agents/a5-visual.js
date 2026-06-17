@@ -69,6 +69,30 @@ export async function runA5(input, canon, feedback = [], episodeDir) {
   return { assets, decision_log };
 }
 
+/**
+ * 단일 비트 이미지 재생성 — 편집 비주얼 편집기의 개별 재생성 버튼용
+ * @param {{ beat: object, claims?: any[] }} input
+ * @param {string} episodeDir
+ */
+export async function runA5Beat({ beat, claims = [] }, episodeDir) {
+  const [item] = await classifyBeats([beat], claims, "", []);
+  if (!item) throw new Error(`beat ${beat.id} 분류 실패`);
+
+  if (item.type === "chart") {
+    return { beat_id: item.beat_id, type: "chart", chart_spec: item.chart_spec ?? null };
+  }
+
+  const filename = `beat-${item.beat_id}.png`;
+  const outputPath = path.join(episodeDir, filename);
+  await generateImage(item.image_prompt, outputPath);
+  return {
+    beat_id: item.beat_id,
+    type: "image",
+    file_path: outputPath,
+    image_prompt: item.image_prompt,
+  };
+}
+
 async function classifyBeats(beats, claims, canon, feedback) {
   const beatList = beats
     .map(

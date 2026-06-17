@@ -5,12 +5,13 @@ import { fork } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import fs from "fs";
+import { runA5Beat } from "./agents/a5-visual.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 
-// visual·render 게이트는 자동 승인 (사람 개입 불필요)
-const AUTO_APPROVE = new Set(["visual", "render"]);
+// render 게이트는 자동 승인; visual은 편집 비주얼 편집기에서 사람이 검토
+const AUTO_APPROVE = new Set(["render"]);
 
 const app = express();
 app.use(express.static(join(__dirname, "public")));
@@ -130,6 +131,20 @@ app.patch("/api/episodes/:episodeId/stages/:stage", express.json(), (req, res) =
     fs.renameSync(tmp, statePath);
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 편집 비주얼: 단일 비트 이미지 재생성
+app.post("/api/visual/beat", express.json(), async (req, res) => {
+  const { episodeId, beat, claims = [] } = req.body;
+  if (!episodeId || !beat) return res.status(400).json({ ok: false, error: "episodeId와 beat 필수" });
+  const episodeDir = join(__dirname, "output", episodeId);
+  if (!fs.existsSync(episodeDir)) return res.status(404).json({ ok: false, error: "에피소드 없음" });
+  try {
+    const asset = await runA5Beat({ beat, claims }, episodeDir);
+    res.json({ ok: true, asset });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // 마지막 미완료 에피소드 조회 — 시작 화면 "이어하기" 카드용
