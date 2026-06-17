@@ -442,7 +442,7 @@ const Demo = {
     State.ws = null;
 
     // 단계별 시퀀스 (gate 앞에서 멈추고, approve 시 다음 단계 진행)
-    Demo._runStage("research", 1200);
+    Demo._runStage("research", 200);
   },
 
   _runStage(stage, delay) {
@@ -491,7 +491,10 @@ const Demo = {
 
   _complete() {
     State.videoPath = "output/demo/video.mp4";
-    handleMessage({ type: "complete", videoPath: "output/demo/video.mp4", totalSeconds: 90, episodeId: "demo" });
+    State.episodeId = "demo";
+    document.getElementById("complete-path").textContent = "output/demo/video.mp4";
+    document.getElementById("stat-sec").textContent = "90초";
+    showPage("p-complete");
   },
 
   stop() {
