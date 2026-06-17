@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node conductor.js",
+    "web": "node server.js",
     "test:config": "node -e \"import('./config.js').then(m => console.log('OK', JSON.stringify(m.CONFIG.targets, null, 2)))\""
   },
   "dependencies": {
