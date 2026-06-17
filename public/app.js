@@ -401,6 +401,125 @@ const App = {
   },
 };
 
+// ── 데모 모드 ──────────────────────────────────────────
+const DEMO_DATA = {
+  research: { claims: [
+    { text: "한국은행은 2026년 1분기 기준금리를 3.00%로 동결했다.", value: "3.00%", source_url: "https://bok.or.kr", source_date: "2026-01-16" },
+    { text: "미국 연준은 2025년 말 기준금리를 4.25~4.50% 구간으로 인하했다.", value: "4.25~4.50%", source_url: "https://federalreserve.gov", source_date: "2025-12-18" },
+    { text: "한국 소비자물가 상승률은 2.1%로 목표치(2%) 근접했다.", value: "2.1%", source_url: "https://kostat.go.kr", source_date: "2026-02-05" },
+    { text: "원·달러 환율은 1,320원대로 6개월 최저 수준이다.", value: "1,320원", source_url: "https://investing.com", source_date: "2026-03-10" },
+    { text: "서울 아파트 매매 거래량은 전월 대비 18% 증가했다.", value: "+18%", source_url: "https://r114.com", source_date: "2026-02-28" },
+  ]},
+  structure: { beats: [
+    { purpose: "HOOK", description: "금리 인하 소식에 서울 아파트 시장이 들썩이고 있다 — 진짜 기회인가, 함정인가?", duration_seconds: 8 },
+    { purpose: "BEAT 1", description: "한국은행의 금리 결정 배경: 물가 안정과 경기 둔화 사이의 딜레마", duration_seconds: 20 },
+    { purpose: "BEAT 2", description: "역사적 데이터로 보는 금리 인하 후 부동산 가격 패턴", duration_seconds: 25 },
+    { purpose: "BEAT 3", description: "2026년 지금, 금리 인하 수혜 지역 vs 리스크 지역 분석", duration_seconds: 25 },
+    { purpose: "결말", description: "시청자가 지금 당장 취해야 할 행동 3가지", duration_seconds: 12 },
+  ]},
+  script: { lines: [
+    "한국은행이 금리를 내렸습니다. 부동산 시장은 지금 폭풍 전야입니다.",
+    "2026년 3월, 기준금리 3.0%. 이 숫자 하나가 수천만 명의 집값을 바꿉니다.",
+    "하지만 금리가 내렸다고 집값이 무조건 오르지는 않습니다.",
+    "역사가 이걸 증명합니다. 2019년 금리 인하 직후, 강남 3구는 올랐지만 지방은 오히려 빠졌습니다.",
+    "지금 주목할 핵심 세 가지를 드리겠습니다.",
+    "첫째, 거래량. 현재 서울 거래량이 18% 급증했습니다. 선행 지표입니다.",
+    "둘째, 입지. 교통 개발 호재가 있는 곳만 선별적으로 오릅니다.",
+    "셋째, 레버리지. 금리 인하기엔 대출 타이밍이 핵심입니다.",
+    "지금 당장 할 것: 원하는 단지의 거래량 체크. 3개월 추이를 보십시오.",
+  ], total_chars: 310, estimated_seconds: 68 },
+  voice: { audio_path: "", estimated_seconds: 68, sync_offset_ms: 12 },
+  final: { total_seconds: 90, video_path: "output/demo/video.mp4" },
+};
+
+const Demo = {
+  active: false,
+  queue: [],   // 다음에 실행할 { delay, msg } 목록
+
+  start() {
+    Demo.active = true;
+    State.topic = "데모: 한국 금리 인하와 부동산 시장";
+    State.ws = null;
+
+    // 단계별 시퀀스 (gate 앞에서 멈추고, approve 시 다음 단계 진행)
+    Demo._runStage("research", 1200);
+  },
+
+  _runStage(stage, delay) {
+    setTimeout(() => {
+      handleMessage({ type: "stage_start", stage });
+      setTimeout(() => {
+        handleMessage({ type: "gate", stage, payload: DEMO_DATA[stage] ?? {} });
+      }, 1400);
+    }, delay);
+  },
+
+  // App.approve() → Demo.next() 로 라우팅됨
+  next(stage) {
+    const seq = {
+      research:  () => Demo._runStage("structure", 300),
+      structure: () => Demo._runStage("script",    300),
+      script:    () => Demo._runStage("voice",     300),
+      voice:     () => Demo._autoPhase(),
+      final:     () => Demo._complete(),
+    };
+    (seq[stage] ?? (() => {}))();
+  },
+
+  _autoPhase() {
+    // visual → render → m1 → final gate
+    setTimeout(() => {
+      handleMessage({ type: "stage_start", stage: "visual" });
+      setTimeout(() => {
+        handleMessage({ type: "stage_done", stage: "visual" });
+        handleMessage({ type: "stage_start", stage: "render" });
+        setTimeout(() => {
+          handleMessage({ type: "stage_done", stage: "render" });
+          document.getElementById("auto-m1").classList.add("active2");
+          document.getElementById("auto-m1-sub").textContent = "검사 중...";
+          setTimeout(() => {
+            document.getElementById("auto-m1").classList.remove("active2");
+            document.getElementById("auto-m1").classList.add("done2");
+            document.getElementById("auto-m1-sub").textContent = "통과";
+            document.getElementById("auto-m1-sub").classList.add("ok");
+            handleMessage({ type: "gate", stage: "final", payload: DEMO_DATA.final });
+          }, 1200);
+        }, 1800);
+      }, 1800);
+    }, 300);
+  },
+
+  _complete() {
+    State.videoPath = "output/demo/video.mp4";
+    handleMessage({ type: "complete", videoPath: "output/demo/video.mp4", totalSeconds: 90, episodeId: "demo" });
+  },
+
+  stop() {
+    Demo.active = false;
+    State.topic = "";
+  },
+};
+
+// App.approve / reject를 데모 모드에서 intercept
+const _origApprove = App.approve.bind(App);
+const _origReject  = App.reject.bind(App);
+App.approve = function(stage) {
+  if (Demo.active) { Demo.next(stage); return; }
+  _origApprove(stage);
+};
+App.reject = function(stage) {
+  if (Demo.active) {
+    // 데모에선 거부해도 같은 gate 재표시 (실제 재생성 없음)
+    handleMessage({ type: "gate", stage, payload: DEMO_DATA[stage] ?? {} });
+    return;
+  }
+  _origReject(stage);
+};
+App.demo = function() { Demo.start(); };
+App.reset = (function(orig) {
+  return function() { Demo.stop(); orig(); };
+})(App.reset.bind(App));
+
 // ── 유틸 ──────────────────────────────────────────────
 function esc(str) {
   return String(str ?? "")

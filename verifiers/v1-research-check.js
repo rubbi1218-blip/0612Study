@@ -31,23 +31,29 @@ export async function runV1(payload) {
 
   const { claimsMin, claimsMax } = CONFIG.targets;
   errors.push(...requireInRange(payload.claims.length, claimsMin, claimsMax, "claims 개수"));
-  errors.push(
-    ...requireArrayItems(payload.claims, ["text", "value", "source_url", "source_date"], "claims")
-  );
+  // text·value는 필수, source_url·source_date는 있으면 검사 (Gemini grounding 없는 경우 허용)
+  errors.push(...requireArrayItems(payload.claims, ["text", "value"], "claims"));
 
   const { sourceMaxAgeDays } = CONFIG.verification;
+  const warnings = [];
   for (let i = 0; i < payload.claims.length; i++) {
     const c = payload.claims[i];
-    errors.push(
-      ...requireUrl(c?.source_url, `claims[${i}].source_url`),
-      ...requireFreshDate(c?.source_date, sourceMaxAgeDays, `claims[${i}].source_date`)
-    );
+    if (c?.source_url) {
+      errors.push(...requireUrl(c.source_url, `claims[${i}].source_url`));
+    } else {
+      warnings.push(`claims[${i}] source_url 없음 — 수동 확인 권장`);
+    }
+    if (c?.source_date) {
+      errors.push(...requireFreshDate(c.source_date, sourceMaxAgeDays, `claims[${i}].source_date`));
+    }
   }
+  if (warnings.length) console.warn("[V1]", warnings.join("; "));
 
   if (errors.length) return { passed: false, reasons: errors };
 
-  // ── Phase 1-A: URL 실존 검사 (fetch HEAD) ─────────────────
-  const urlErrors = await checkUrlsExist(payload.claims);
+  // ── Phase 1-A: URL 실존 검사 (source_url 있는 것만) ──────
+  const claimsWithUrl = payload.claims.filter(c => c?.source_url);
+  const urlErrors = claimsWithUrl.length > 0 ? await checkUrlsExist(claimsWithUrl) : [];
   errors.push(...urlErrors);
 
   // ── Phase 1-A: LLM 환각 대조 ──────────────────────────────
