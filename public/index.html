@@ -324,6 +324,15 @@
       <div class="gate-panel">
         <div class="gate-panel-title">대본+B롤 검토</div>
         <div class="gate-panel-desc">각 비트의 내레이션과 B롤 계획을 확인하세요. 승인하면 이미지·영상 생성이 시작됩니다.</div>
+
+        <div class="gate-panel-section">
+          <div class="gate-section-label">렌더 엔진</div>
+          <div class="model-btns">
+            <button class="model-btn sel" data-group="renderer" data-val="remotion" onclick="App.selectModel(this)">Remotion</button>
+            <button class="model-btn" data-group="renderer" data-val="hyperframes" onclick="App.selectModel(this)">HyperFrames</button>
+          </div>
+        </div>
+
         <div class="gate-panel-spacer"></div>
         <div class="gate-actions">
           <button class="btn-approve" onclick="App.approve('dashboard')">✅ 확인 완료 — 비주얼 생성 시작</button>

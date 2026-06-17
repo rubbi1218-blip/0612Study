@@ -336,7 +336,7 @@ function _showDashboardGate() {
       script:    { payload: scriptPl },
       visual:    { payload: { assets: [] } },
     },
-  }, "dbrd-vrew-body");
+  }, "dbrd-vrew-body", { editMode: true });
   showPage("p-gate-dashboard");
 }
 
@@ -1048,6 +1048,92 @@ const App = {
   closeDashboard() { showPage(State._prevPage ?? "p-running"); },
 };
 
+// ── 대본+B롤 게이트 씬 편집 ──────────────────────────────
+function _dbrdGetBeatLines(bi) {
+  const beats    = State.gatePayloads.structure?.beats ?? [];
+  const lines    = State.gatePayloads.script?.lines   ?? [];
+  const numBeats = Math.max(beats.length, 1);
+  const perBeat  = Math.ceil(lines.length / numBeats);
+  const start    = bi * perBeat;
+  const end      = (bi + 1) * perBeat;
+  return { lines, perBeat, start, end, beatLines: lines.slice(start, end) };
+}
+
+Object.assign(App, {
+  dbrdEditBeat(bi) {
+    const linesEl = document.getElementById(`vrew-lines-${bi}`);
+    if (!linesEl || linesEl.dataset.editing === "1") return;
+    linesEl.dataset.editing = "1";
+
+    const { beatLines, start } = _dbrdGetBeatLines(bi);
+    linesEl.innerHTML = beatLines.map((line, i) =>
+      `<textarea class="vrew-line-edit" data-gi="${start + i}" rows="2">${escHtml(line)}</textarea>`
+    ).join("");
+
+    const actEl = linesEl.closest("[data-beat-bi]")?.querySelector(".vrew-beat-actions");
+    if (actEl) actEl.innerHTML = `
+      <button class="vrew-act-btn vrew-act-save"   onclick="App.dbrdSaveEdit(${bi})">💾 저장</button>
+      <button class="vrew-act-btn vrew-act-cancel" onclick="App.dbrdCancelEdit(${bi})">✕ 취소</button>`;
+  },
+
+  dbrdSaveEdit(bi) {
+    const linesEl = document.getElementById(`vrew-lines-${bi}`);
+    if (!linesEl) return;
+
+    const lines = [...(State.gatePayloads.script?.lines ?? [])];
+    linesEl.querySelectorAll("textarea.vrew-line-edit").forEach(ta => {
+      const gi = parseInt(ta.dataset.gi);
+      if (!isNaN(gi) && gi < lines.length) lines[gi] = ta.value.trim() || lines[gi];
+    });
+    if (State.gatePayloads.script) State.gatePayloads.script.lines = lines;
+
+    delete linesEl.dataset.editing;
+    App._dbrdRestoreLines(bi);
+    App._dbrdRestoreActions(bi);
+  },
+
+  dbrdCancelEdit(bi) {
+    const linesEl = document.getElementById(`vrew-lines-${bi}`);
+    if (!linesEl) return;
+    delete linesEl.dataset.editing;
+    App._dbrdRestoreLines(bi);
+    App._dbrdRestoreActions(bi);
+  },
+
+  dbrdRegenBeat(bi) {
+    const beats = State.gatePayloads.structure?.beats ?? [];
+    const label = beats[bi]?.purpose ?? `비트 ${bi + 1}`;
+    if (!State.ws || State.ws.readyState !== WebSocket.OPEN) {
+      alert("진행 중인 파이프라인이 없습니다.");
+      return;
+    }
+    const feedback = `씬 "${label}" 부분을 다시 작성해주세요.`;
+    State.ws.send(JSON.stringify({ type: "reject", stage: "dashboard", feedback }));
+    document.getElementById("run-topic").textContent = State.topic;
+    showPage("p-running");
+  },
+
+  _dbrdRestoreLines(bi) {
+    const linesEl = document.getElementById(`vrew-lines-${bi}`);
+    if (!linesEl) return;
+    const { beatLines, start } = _dbrdGetBeatLines(bi);
+    linesEl.innerHTML = beatLines.map((line, i) =>
+      `<div class="vrew-script-line">
+        <span class="vrew-line-idx">${start + i + 1}</span>
+        <span class="vrew-line-txt">${escHtml(line)}</span>
+      </div>`).join("");
+  },
+
+  _dbrdRestoreActions(bi) {
+    const cell  = document.querySelector(`[data-beat-bi="${bi}"]`);
+    const actEl = cell?.querySelector(".vrew-beat-actions");
+    if (!actEl) return;
+    actEl.innerHTML = `
+      <button class="vrew-act-btn vrew-act-edit"  onclick="App.dbrdEditBeat(${bi})">✏️ 편집</button>
+      <button class="vrew-act-btn vrew-act-regen" onclick="App.dbrdRegenBeat(${bi})">↺ 재생성</button>`;
+  },
+});
+
 // ── 유틸 ────────────────────────────────────────────────
 function escHtml(s) {
   return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
@@ -1214,7 +1300,8 @@ function renderDashboard(epState) {
   renderVrewTable(epState, "dash-body");
 }
 
-function renderVrewTable(epState, targetId) {
+function renderVrewTable(epState, targetId, opts = {}) {
+  const { editMode = false } = opts;
   const body = document.getElementById(targetId);
   if (!body) return;
 
@@ -1263,6 +1350,12 @@ function renderVrewTable(epState, targetId) {
           </div>`).join("")
       : '<div class="vrew-no-script">대본 없음</div>';
 
+    const actionsHtml = editMode ? `
+      <div class="vrew-beat-actions">
+        <button class="vrew-act-btn vrew-act-edit" onclick="App.dbrdEditBeat(${bi})">✏️ 편집</button>
+        <button class="vrew-act-btn vrew-act-regen" onclick="App.dbrdRegenBeat(${bi})">↺ 재생성</button>
+      </div>` : "";
+
     html += `<div class="vrew-row">
       <div class="vrew-beat-cell">
         <span class="vrew-beat-badge" style="background:${color}18;color:${color};border-color:${color}44">${label}</span>
@@ -1273,7 +1366,10 @@ function renderVrewTable(epState, targetId) {
         <div class="vrew-thumb">${thumbInner}</div>
         ${assetDesc ? `<div class="vrew-broll-desc">${assetDesc}</div>` : ""}
       </div>
-      <div class="vrew-script-cell">${scriptHtml}</div>
+      <div class="vrew-script-cell"${editMode ? ` data-beat-bi="${bi}"` : ""}>
+        <div class="vrew-script-lines"${editMode ? ` id="vrew-lines-${bi}"` : ""}>${scriptHtml}</div>
+        ${actionsHtml}
+      </div>
     </div>`;
   });
 

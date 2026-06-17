@@ -283,7 +283,7 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 
 /* ── Escalation overlay ── */
 /* ── 편집 비주얼 (p-visual-edit) ── */
-#p-visual-edit{display:flex;flex-direction:column}
+#p-visual-edit{flex-direction:column}
 .ve-header{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;border-bottom:1px solid var(--b1);flex-shrink:0;gap:24px;flex-wrap:wrap}
 .ve-header-left{display:flex;flex-direction:column;gap:3px}
 .ve-title{font-size:18px;font-weight:800;color:var(--t1)}
@@ -615,6 +615,18 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .vrew-line-idx{font-size:10px;color:var(--t3);min-width:18px;padding-top:3px;font-family:monospace;font-weight:700;flex-shrink:0}
 .vrew-line-txt{font-size:14px;color:var(--t1);line-height:1.65}
 .vrew-no-script{font-size:12px;color:var(--t3);padding:4px 0}
+.vrew-beat-actions{display:flex;gap:6px;padding:8px 0 2px;border-top:1px solid var(--b1);margin-top:8px}
+.vrew-act-btn{padding:4px 10px;border-radius:6px;border:1px solid var(--b1);background:transparent;color:var(--t2);font-size:11px;cursor:pointer;transition:background .15s,color .15s}
+.vrew-act-btn:hover{background:var(--b1);color:var(--t1)}
+.vrew-act-edit{border-color:rgba(99,102,241,.3);color:rgba(99,102,241,.9)}
+.vrew-act-edit:hover{background:rgba(99,102,241,.12);color:#818cf8}
+.vrew-act-regen{border-color:var(--acc-g);color:var(--acc)}
+.vrew-act-regen:hover{background:var(--acc-g);color:#fff}
+.vrew-act-save{border-color:rgba(34,197,94,.35);color:#4ade80}
+.vrew-act-save:hover{background:rgba(34,197,94,.12)}
+.vrew-act-cancel{border-color:var(--b2);color:var(--t3)}
+.vrew-line-edit{width:100%;background:var(--s2);border:1px solid var(--b1);border-radius:6px;color:var(--t1);font-size:12px;line-height:1.55;padding:6px 8px;resize:vertical;margin-bottom:4px;font-family:inherit;box-sizing:border-box}
+.vrew-line-edit:focus{outline:none;border-color:var(--acc)}
 .vrew-empty{display:flex;align-items:center;justify-content:center;height:160px;font-size:14px;color:var(--t3)}
 .vrew-loading{display:flex;align-items:center;justify-content:center;height:160px;font-size:13px;color:var(--t3)}
 
