@@ -285,8 +285,17 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .esc-card{background:var(--s1);border:1px solid rgba(244,63,94,.28);border-radius:var(--r4);padding:36px;max-width:480px;width:100%;text-align:center;display:flex;flex-direction:column;gap:14px;box-shadow:0 8px 40px rgba(0,0,0,.6)}
 .esc-icon{font-size:44px}.esc-title{font-size:20px;font-weight:800;color:#fb7185}
 .esc-sub{font-size:14px;color:var(--t2);line-height:1.6}
-.esc-reasons{background:var(--bg);border-radius:var(--r2);padding:14px 16px;text-align:left;border:1px solid var(--b1)}
-.esc-reason{font-size:12px;color:#fca5a5;margin-bottom:6px;line-height:1.5}
+.esc-card{max-height:90vh;overflow-y:auto}
+.esc-reasons{background:var(--bg);border-radius:var(--r2);padding:14px 16px;text-align:left;border:1px solid var(--b1);display:flex;flex-direction:column;gap:10px;max-height:40vh;overflow-y:auto}
+.esc-reason{font-size:12.5px;color:#fca5a5;line-height:1.6;display:flex;flex-direction:column;gap:4px}
+.esc-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:rgba(251,113,133,.2);border-radius:50%;font-size:10px;font-weight:700;color:#fb7185;flex-shrink:0;margin-bottom:3px}
+.esc-badge{display:inline-block;align-self:flex-start;background:rgba(139,92,246,.22);color:#c4b5fd;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;font-family:monospace;letter-spacing:.3px}
+.esc-guidance{align-self:stretch}
+.esc-status{color:#f87171;font-size:12px;font-weight:600;margin-left:4px}
+.esc-msg{color:var(--t2);font-size:12px;line-height:1.55}
+.esc-guidance{margin-top:6px;padding:9px 12px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.28);border-radius:6px;font-size:12px;color:var(--t1);line-height:1.6}
+.esc-guidance code{background:rgba(99,102,241,.2);padding:1px 5px;border-radius:3px;font-family:monospace;color:#a78bfa;font-size:11px}
+.esc-collapse-note{font-size:11px;color:var(--t3);text-align:center;padding-top:2px}
 .esc-btns{display:flex;gap:10px}
 .btn-retry{flex:2;background:var(--acc);border:none;color:#fff;padding:12px;border-radius:var(--r2);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s}
 .btn-retry:hover{background:#4f46e5}

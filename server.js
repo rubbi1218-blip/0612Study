@@ -203,18 +203,25 @@ wss.on("connection", (ws) => {
         const lines = buf.split("\n");
         buf = lines.pop();
         for (const line of lines) {
-          if (!line.trim()) continue;
-          const level = line.includes("✅") ? "ok"
-            : line.includes("❌") || line.includes("오류") ? "error"
-            : line.includes("⚠️") || line.includes("⏸") ? "warn"
+          const t = line.trim();
+          if (!t) continue;
+          // 구분선(=====, ----) 필터링 — 개발자용 장식선은 UI 로그에 불필요
+          if (/^[=\-]{8,}\s*$/.test(t)) continue;
+          const level = t.includes("✅") ? "ok"
+            : t.includes("❌") || t.includes("오류") ? "error"
+            : t.includes("⚠️") || t.includes("⏸") ? "warn"
             : "info";
-          safeSend(ws, { type: "log", level, message: line.trim() });
+          safeSend(ws, { type: "log", level, message: t });
         }
       });
 
       child.stderr.on("data", (chunk) => {
         for (const line of chunk.toString().split("\n")) {
-          if (line.trim()) safeSend(ws, { type: "log", level: "error", message: line.trim() });
+          const t = line.trim();
+          if (!t) continue;
+          // stderr는 대부분 경고·디버그. 실제 에러만 error 레벨로
+          const level = /error|Error|exception|FATAL/i.test(t) ? "error" : "warn";
+          safeSend(ws, { type: "log", level, message: t });
         }
       });
 

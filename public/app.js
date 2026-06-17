@@ -11,6 +11,8 @@ const State = {
   speechIdx: -1,
   format: "short",   // "short" | "long"
   models: { research: "gemini", script: "claude", tts: "elevenlabs", renderer: "remotion" },
+  _creepTimer: null,
+  _creepPct: 0,
 };
 
 // ── 스텝 정의 ─────────────────────────────────────────
@@ -96,6 +98,38 @@ function appendLog(containerId, level, message) {
   while (el.children.length > 80) el.removeChild(el.firstChild);
 }
 
+// ── 에스컬레이션 에러 파서 ────────────────────────────
+function parseReason(raw) {
+  // "[service] HTTP NNN: {...JSON...}" 형식 파싱
+  const m = raw.match(/^(\[[^\]]+\])\s+HTTP\s+(\d+):\s*(\{[\s\S]*\})$/);
+  if (m) {
+    const service = m[1];
+    const status  = parseInt(m[2]);
+    let msg = raw;
+    try {
+      const body   = JSON.parse(m[3]);
+      const detail = body.detail ?? body;
+      msg = detail.message ?? detail.error_message ?? detail.error ?? JSON.stringify(detail);
+    } catch {}
+    const statusLabel = {
+      400: "잘못된 요청", 401: "인증 실패", 402: "결제 필요",
+      403: "접근 권한 없음", 404: "찾을 수 없음",
+      429: "요청 한도 초과", 500: "서버 오류", 503: "서비스 불가",
+    }[status] ?? `HTTP ${status}`;
+
+    let guidance = "";
+    if (status === 402) {
+      guidance = `<div class="esc-guidance">💡 <strong>해결 방법</strong>: ElevenLabs 유료 플랜으로 업그레이드하거나 <code>.env</code>에서 <code>TTS_ENGINE=qwen3</code>으로 변경하세요.</div>`;
+    } else if (status === 429) {
+      guidance = `<div class="esc-guidance">💡 요청 한도 초과입니다. 잠시 후 재시도 버튼을 누르세요.</div>`;
+    } else if (status === 401 || status === 403) {
+      guidance = `<div class="esc-guidance">💡 <code>.env</code>의 API 키를 확인하세요.</div>`;
+    }
+    return `<span class="esc-badge">${esc(service)}</span> <span class="esc-status">${esc(statusLabel)}</span><br><span class="esc-msg">${esc(msg)}</span>${guidance}`;
+  }
+  return esc(raw);
+}
+
 // ── WebSocket 메시지 처리 ─────────────────────────────
 function handleMessage(msg) {
   switch (msg.type) {
@@ -109,6 +143,8 @@ function handleMessage(msg) {
 
     case "progress": {
       const pct = Math.min(100, Math.max(0, msg.pct ?? 0));
+      // 실제 진행률이 30% 넘으면 크리핑 타이머 불필요
+      if (pct >= 30) { clearInterval(State._creepTimer); State._creepTimer = null; }
       // p-running 진행률 바
       const fill = document.getElementById("run-progress-fill");
       const pctEl = document.getElementById("run-progress-pct");
@@ -129,11 +165,23 @@ function handleMessage(msg) {
     case "stage_start": {
       State.currentStage = msg.stage;
       if (msg.episodeId) State.episodeId = msg.episodeId;
-      // 진행률 바 초기화
+      // 진행률 바 초기화 + 크리핑 타이머 (API 응답 대기 중 시각적 피드백)
       const fill = document.getElementById("run-progress-fill");
       const pctEl = document.getElementById("run-progress-pct");
       if (fill)  fill.style.width = "0%";
       if (pctEl) pctEl.textContent = "0%";
+      clearInterval(State._creepTimer);
+      State._creepPct = 0;
+      State._creepTimer = setInterval(() => {
+        // 실제 진행률 업데이트 전까지 최대 28%까지 천천히 증가
+        State._creepPct = Math.min(28, State._creepPct + 0.25);
+        const f = document.getElementById("run-progress-fill");
+        const p = document.getElementById("run-progress-pct");
+        if (f && parseFloat(f.style.width || "0") <= State._creepPct) {
+          f.style.width = `${State._creepPct}%`;
+          if (p) p.textContent = `${Math.round(State._creepPct)}%`;
+        }
+      }, 400); // 0.4초마다 +0.25% → ~45초에 28% 도달
       const doneStages = getDoneStages(msg.stage);
       const TITLES = {
         research:  "리서치 중...", structure: "구성 설계 중...",
@@ -200,6 +248,7 @@ function handleMessage(msg) {
     }
 
     case "gate": {
+      clearInterval(State._creepTimer); State._creepTimer = null;
       State.gatePayloads[msg.stage] = msg.payload;
       const done = getDoneStages(msg.stage);
 
@@ -237,11 +286,18 @@ function handleMessage(msg) {
     }
 
     case "escalation": {
+      clearInterval(State._creepTimer); State._creepTimer = null;
       document.getElementById("esc-title").textContent =
         `${msg.stage} — 3회 실패, 도움이 필요합니다`;
+      // 중복 이유 압축: 같은 문자열이 반복될 경우 1개만 표시
+      const rawReasons = msg.reasons || [];
+      const uniq = [...new Map(rawReasons.map(r => [r, r])).values()];
+      const collapsed = uniq.length < rawReasons.length;
       document.getElementById("esc-reasons").innerHTML =
-        (msg.reasons || []).map((r, i) =>
-          `<div class="esc-reason">${i+1}. ${esc(r)}</div>`).join("");
+        uniq.map((r, i) =>
+          `<div class="esc-reason"><span class="esc-num">${i+1}</span>${parseReason(r)}</div>`
+        ).join("") +
+        (collapsed ? `<div class="esc-collapse-note">↑ 3회 시도 모두 동일한 오류</div>` : "");
       document.getElementById("esc-overlay").classList.add("visible");
       break;
     }
