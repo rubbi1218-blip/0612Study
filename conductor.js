@@ -294,6 +294,8 @@ async function main() {
     let feedback     = [...humanRejFeedback];
     humanRejFeedback = [];
 
+    if (_wsMode) process.send({ type: "stage_start", stage: stage.name });
+
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       console.log(`\n[${stage.name}] 🔄 attempt ${attempt}/${MAX_RETRIES}`);
 
@@ -335,6 +337,7 @@ async function main() {
       if (result.passed) {
         state.markStageVerified(stage.name, result);
         console.log(`[${stage.name}] ✅ 검증 통과`);
+        if (_wsMode) process.send({ type: "stage_done", stage: stage.name });
         passed = true;
         break;
       }
