@@ -342,38 +342,80 @@
     </div>
   </div>
 
-  <!-- ⑦ 편집 비주얼 (비트별 이미지 생성/편집/재생성) -->
+  <!-- ⑦ 편집비주얼 — 미리보기 플레이어 + 타임라인 편집기 -->
   <div class="page" id="p-visual-edit">
     <div class="topbar">
       <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
       <span class="tb-sep"></span>
       <span class="tb-topic" id="ve-topic"></span>
       <div class="tb-right">
-        <span class="badge badge-wait" id="ve-badge">편집 비주얼</span>
+        <span class="badge badge-wait" id="ve-badge">편집비주얼</span>
       </div>
     </div>
     <div class="stepbar" id="ve-stepbar"></div>
 
-    <!-- 헤더: 제목 + 이미지 모델 전역 선택 -->
-    <div class="ve-header">
-      <div class="ve-header-left">
-        <div class="ve-title">✏️ 편집 비주얼</div>
-        <div class="ve-subtitle" id="ve-subtitle">비트별 이미지를 생성하고 편집하세요</div>
-      </div>
-      <div class="ve-header-right">
-        <div class="ve-field-label">이미지 생성 모델</div>
-        <div class="model-btns">
-          <button class="model-btn sel" data-group="ve-imgmodel" data-val="gemini" onclick="App.selectModel(this)">Gemini Imagen</button>
-          <button class="model-btn" data-group="ve-imgmodel" data-val="chatgpt" onclick="App.selectModel(this)">ChatGPT</button>
-          <button class="model-btn" data-group="ve-imgmodel" data-val="veo" onclick="App.selectModel(this)">Veo 2</button>
+    <!-- 에디터 본문: 좌=미리보기, 우=타임라인 -->
+    <div class="ve-editor">
+
+      <!-- 좌: 미리보기 플레이어 -->
+      <div class="ve-preview-pane">
+        <div class="ve-preview-screen" id="ve-preview-screen">
+          <div class="ve-preview-img-wrap" id="ve-preview-img-wrap">
+            <div class="ve-preview-placeholder">씬을 선택하거나<br>⚡ 이미지를 생성하세요</div>
+          </div>
+          <div class="ve-preview-top-bar" id="ve-preview-scene-label"></div>
+          <div class="ve-preview-script-bar" id="ve-preview-script"></div>
         </div>
+        <div class="ve-player-bar">
+          <button class="ve-player-btn" onclick="App.vePrev()" title="이전 씬">◀</button>
+          <button class="ve-player-btn ve-play-main" id="ve-play-btn" onclick="App.veTogglePlay()">▶ 재생</button>
+          <button class="ve-player-btn" onclick="App.veNext()" title="다음 씬">▶</button>
+          <span class="ve-player-time" id="ve-player-time">씬 — / —</span>
+        </div>
+      </div>
+
+      <!-- 우: 타임라인 + 편집 패널 -->
+      <div class="ve-timeline-pane">
+
+        <!-- 도구 헤더: 모델 선택 + 전체 생성 -->
+        <div class="ve-tools-header">
+          <div class="ve-tools-left">
+            <span class="ve-field-label">이미지 모델</span>
+            <div class="model-btns">
+              <button class="model-btn sel" data-group="ve-imgmodel" data-val="gemini" onclick="App.selectModel(this)">Gemini Imagen</button>
+              <button class="model-btn" data-group="ve-imgmodel" data-val="chatgpt" onclick="App.selectModel(this)">ChatGPT</button>
+              <button class="model-btn" data-group="ve-imgmodel" data-val="veo" onclick="App.selectModel(this)">Veo 2</button>
+            </div>
+          </div>
+          <button class="btn-gen-all" onclick="App.generateAllBeats()">⚡ 전체 생성</button>
+        </div>
+
+        <!-- 타임라인 씬 리스트 -->
+        <div class="ve-timeline" id="ve-timeline"></div>
+
+        <!-- 선택된 씬 수동 편집 패널 -->
+        <div class="ve-edit-panel" id="ve-edit-panel" style="display:none">
+          <div class="ve-edit-header">
+            <span class="ve-edit-title" id="ve-edit-title">씬 편집</span>
+            <button class="ve-edit-close" onclick="App.veEditClose()">✕</button>
+          </div>
+          <div class="ve-edit-label">내레이션 대본</div>
+          <textarea class="ve-edit-ta" id="ve-edit-script-ta" rows="3" placeholder="내레이션 텍스트 (줄바꿈 = 호흡 분리)"></textarea>
+          <div class="ve-edit-sec-row">
+            <span class="ve-edit-sec-label">⏱ 노출 시간</span>
+            <input class="ve-edit-sec-inp" id="ve-edit-sec-inp" type="number" min="1" max="60" value="5">
+            <span class="ve-edit-sec-unit">초</span>
+          </div>
+          <div class="ve-edit-actions">
+            <button class="vrew-act-btn vrew-act-save" onclick="App.veEditSave()">💾 저장</button>
+            <button class="vrew-act-btn vrew-act-regen" onclick="App.veRegenCurrent()">↺ 이미지 재생성</button>
+          </div>
+        </div>
+
       </div>
     </div>
 
-    <!-- 비트 카드 그리드 -->
-    <div class="ve-grid" id="ve-grid"></div>
-
-    <!-- 하단 고정 바: 렌더 엔진 + 전체생성 + 렌더시작 -->
+    <!-- 하단 고정 바 -->
     <div class="ve-footer">
       <div class="ve-footer-left">
         <div class="ve-field-label">렌더 엔진</div>
@@ -384,7 +426,6 @@
       </div>
       <div class="ve-footer-right">
         <div class="ve-gen-progress" id="ve-gen-progress"></div>
-        <button class="btn-gen-all" onclick="App.generateAllBeats()">⚡ 전체 생성</button>
         <button class="btn-render-start" onclick="App.approveVisualEdit()">▶ 렌더 시작</button>
       </div>
     </div>
