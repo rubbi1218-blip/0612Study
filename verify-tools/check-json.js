@@ -89,7 +89,14 @@ export function requireInRange(value, min, max, label) {
  * @returns {string[]} 오류 메시지 목록
  */
 export function requireFreshDate(dateStr, maxAgeDays, label = "source_date") {
-  if (typeof dateStr !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+  if (typeof dateStr !== "string") {
+    return [`"${label}" 날짜 형식 오류 (YYYY-MM-DD 필요): "${dateStr}"`];
+  }
+  // YYYY-MM 형식은 월 첫째 날로 자동 보정
+  if (/^\d{4}-\d{2}$/.test(dateStr)) {
+    dateStr = dateStr + "-01";
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return [`"${label}" 날짜 형식 오류 (YYYY-MM-DD 필요): "${dateStr}"`];
   }
   const date = new Date(dateStr + "T00:00:00Z");

@@ -1,11 +1,16 @@
 // ── 상태 ──────────────────────────────────────────────
 const State = {
   topic: "",
+  intent: "",
   ws: null,
   currentStage: null,
   gatePayloads: {},
   videoPath: null,
   episodeId: null,
+  scriptLines: [],
+  speechIdx: -1,
+  format: "short",   // "short" | "long"
+  models: { research: "gemini", script: "claude", tts: "elevenlabs", renderer: "remotion" },
 };
 
 // ── 스텝 정의 ─────────────────────────────────────────
@@ -14,6 +19,7 @@ const STEPS = [
   { id: "structure", label: "구성" },
   { id: "script",    label: "대본" },
   { id: "voice",     label: "음성" },
+  { id: "dashboard", label: "대본+B롤" },
   { id: "visual",    label: "비주얼" },
   { id: "render",    label: "렌더" },
 ];
@@ -35,12 +41,14 @@ function buildStepbar(containerId, activeStage, doneStages) {
     const cls = isDone ? "done" : isActive ? "active" : "wait";
 
     const dot = document.createElement("div");
-    dot.className = `s-dot ${cls}`;
+    dot.className = `s-dot ${cls}${isDone ? " clickable-step" : ""}`;
     dot.textContent = isDone ? "✓" : String(i + 1);
+    if (isDone) dot.onclick = () => App.backTo(step.id);
 
     const lbl = document.createElement("span");
-    lbl.className = `s-lbl ${cls}`;
+    lbl.className = `s-lbl ${cls}${isDone ? " clickable-step" : ""}`;
     lbl.textContent = step.label;
+    if (isDone) lbl.onclick = () => App.backTo(step.id);
 
     el.appendChild(dot);
     el.appendChild(lbl);
@@ -53,11 +61,27 @@ function buildStepbar(containerId, activeStage, doneStages) {
   });
 }
 
-// ── 화면 전환 ─────────────────────────────────────────
+// ── 화면 전환 (fade) ──────────────────────────────────
 function showPage(id) {
-  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
-  const el = document.getElementById(id);
-  if (el) el.classList.add("active");
+  const current = document.querySelector(".page.active");
+  const next = document.getElementById(id);
+  if (!next || next === current) return;
+
+  if (current) {
+    current.classList.add("page-out");
+    current.classList.remove("active");
+    setTimeout(() => current.classList.remove("page-out"), 220);
+  }
+
+  next.style.opacity = "0";
+  next.classList.add("active");
+  requestAnimationFrame(() => {
+    next.style.transition = "opacity .19s ease";
+    requestAnimationFrame(() => {
+      next.style.opacity = "1";
+      setTimeout(() => { next.style.transition = ""; next.style.opacity = ""; }, 220);
+    });
+  });
 }
 
 // ── 로그 추가 ─────────────────────────────────────────
@@ -83,8 +107,33 @@ function handleMessage(msg) {
       break;
     }
 
+    case "progress": {
+      const pct = Math.min(100, Math.max(0, msg.pct ?? 0));
+      // p-running 진행률 바
+      const fill = document.getElementById("run-progress-fill");
+      const pctEl = document.getElementById("run-progress-pct");
+      if (fill)  fill.style.width = `${pct}%`;
+      if (pctEl) pctEl.textContent = `${pct}%`;
+      // p-auto 렌더 진행률 바
+      if (msg.stage === "render") {
+        const wrap = document.getElementById("auto-render-progress-wrap");
+        const rFill = document.getElementById("auto-render-fill");
+        const rPct  = document.getElementById("auto-render-pct");
+        if (wrap)  wrap.style.display = "flex";
+        if (rFill) rFill.style.width  = `${pct}%`;
+        if (rPct)  rPct.textContent   = `${pct}%`;
+      }
+      break;
+    }
+
     case "stage_start": {
       State.currentStage = msg.stage;
+      if (msg.episodeId) State.episodeId = msg.episodeId;
+      // 진행률 바 초기화
+      const fill = document.getElementById("run-progress-fill");
+      const pctEl = document.getElementById("run-progress-pct");
+      if (fill)  fill.style.width = "0%";
+      if (pctEl) pctEl.textContent = "0%";
       const doneStages = getDoneStages(msg.stage);
       const TITLES = {
         research:  "리서치 중...", structure: "구성 설계 중...",
@@ -107,6 +156,13 @@ function handleMessage(msg) {
           const el = document.getElementById("auto-visual");
           el.classList.add("active2");
           document.getElementById("auto-visual-sub").textContent = "생성 중...";
+          renderVrewTable({
+            stages: {
+              structure: { payload: State.gatePayloads.structure ?? {} },
+              script:    { payload: State.gatePayloads.script    ?? {} },
+              visual:    { payload: { assets: [] } },
+            },
+          }, "auto-dash-body");
         } else {
           const vis = document.getElementById("auto-visual");
           vis.classList.remove("active2");
@@ -205,6 +261,23 @@ function handleMessage(msg) {
   }
 }
 
+// ── 대본+B롤 게이트 헬퍼 ────────────────────────────────
+function _showDashboardGate() {
+  const structPl = State.gatePayloads.structure ?? (Demo.active ? DEMO_DATA.structure : {});
+  const scriptPl = State.gatePayloads.script    ?? (Demo.active ? DEMO_DATA.script    : {});
+  const done = getDoneStages("dashboard");
+  buildStepbar("dbrd-stepbar", "dashboard", done);
+  document.getElementById("dbrd-topic").textContent = State.topic;
+  renderVrewTable({
+    stages: {
+      structure: { payload: structPl },
+      script:    { payload: scriptPl },
+      visual:    { payload: { assets: [] } },
+    },
+  }, "dbrd-vrew-body");
+  showPage("p-gate-dashboard");
+}
+
 // ── 게이트 렌더러 ─────────────────────────────────────
 function renderClaims(payload) {
   const claims = payload?.claims ?? [];
@@ -245,6 +318,8 @@ function renderScript(payload) {
   const lines   = payload?.lines ?? [];
   const chars   = payload?.total_chars ?? lines.join("").length;
   const seconds = payload?.estimated_seconds ?? 0;
+  State.scriptLines = lines;
+  App.stopScriptPlay();
   document.getElementById("script-meta").innerHTML = `
     <div class="s-meta-chip"><div class="s-meta-num">${chars}자</div><div class="s-meta-lbl">총 글자수</div></div>
     <div class="s-meta-chip"><div class="s-meta-num">약 ${Math.round(seconds)}초</div><div class="s-meta-lbl">예상 재생시간</div></div>
@@ -303,13 +378,19 @@ const App = {
     const topic  = document.getElementById("inp-topic").value.trim();
     const intent = document.getElementById("inp-intent").value.trim();
     if (!topic) { alert("영상 주제를 입력해주세요."); return; }
-    State.topic = topic;
+    State.topic  = topic;
+    State.intent = intent;
 
     const ws = new WebSocket(`ws://${location.host}`);
     State.ws = ws;
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: "start", topic, intent }));
+      const startMsg = { type: "start", topic, intent,
+        format:   State.format,
+        renderer: State.models.renderer,
+        tts:      State.models.tts,
+      };
+      ws.send(JSON.stringify(startMsg));
       document.getElementById("log-lines").innerHTML = "";
       document.getElementById("run-topic").textContent = topic;
       document.getElementById("run-title").textContent = "연결 중...";
@@ -327,15 +408,42 @@ const App = {
     document.getElementById("inp-topic").focus();
   },
 
+  setFormat(fmt) {
+    State.format = fmt;
+    document.getElementById("fmt-short")?.classList.toggle("sel", fmt === "short");
+    document.getElementById("fmt-long")?.classList.toggle("sel",  fmt === "long");
+  },
+
+  selectModel(btn) {
+    const group = btn.dataset.group;
+    const val   = btn.dataset.val;
+    State.models[group] = val;
+    btn.closest(".model-btns")?.querySelectorAll(".model-btn")
+      .forEach(b => b.classList.toggle("sel", b === btn));
+  },
+
   approve(stage) {
-    if (!State.ws) return;
-    State.ws.send(JSON.stringify({ type: "approve", stage }));
+    App.stopScriptPlay();
+
+    // voice 승인 → 대본+B롤 확인 게이트 먼저 (conductor에는 아직 전달 안 함)
     if (stage === "voice") {
-      // 비주얼·렌더·M1 자동 진행 화면으로
+      _showDashboardGate();
+      return;
+    }
+
+    // dashboard 승인 → 이제 conductor에 voice approve 전달 + p-auto
+    if (stage === "dashboard") {
+      if (!State.ws) return;
+      State.ws.send(JSON.stringify({ type: "approve", stage: "voice" }));
       document.getElementById("auto-topic").textContent = State.topic;
       buildStepbar("auto-stepbar", "visual", getDoneStages("visual"));
       showPage("p-auto");
-    } else if (stage === "final") {
+      return;
+    }
+
+    if (!State.ws) return;
+    State.ws.send(JSON.stringify({ type: "approve", stage }));
+    if (stage === "final") {
       document.getElementById("complete-path").textContent =
         State.videoPath ?? State.gatePayloads["final"]?.video_path ?? "—";
       document.getElementById("stat-sec").textContent =
@@ -350,11 +458,35 @@ const App = {
   },
 
   reject(stage) {
-    if (!State.ws) return;
     const feedbackMap = { structure: "str-feedback", script: "scr-feedback" };
     const feedbackId = feedbackMap[stage];
-    const feedback = feedbackId
+    let feedback = feedbackId
       ? (document.getElementById(feedbackId)?.value?.trim() ?? "") : "";
+
+    // 대본 단계: 선택 모델을 피드백에 포함. 모델만 변경된 경우 텍스트 없어도 허용.
+    if (stage === "script") {
+      const model = State.models.script ?? "claude";
+      if (model !== "claude") {
+        feedback = `[모델: ${model}]${feedback ? " " + feedback : " 재생성 요청"}`;
+      } else if (!feedback) {
+        document.getElementById(feedbackId)?.focus();
+        return;
+      }
+    } else if (feedbackId && !feedback) {
+      document.getElementById(feedbackId)?.focus();
+      return;
+    }
+
+    // 전송 전 textarea 초기화 및 feedback-row 닫기
+    if (feedbackId) {
+      const inp = document.getElementById(feedbackId);
+      if (inp) inp.value = "";
+      const rowId = feedbackId.replace("-feedback", "-feedback-row");
+      const row = document.getElementById(rowId);
+      if (row) row.style.display = "none";
+    }
+    App.stopScriptPlay();
+    if (!State.ws) return;
     State.ws.send(JSON.stringify({ type: "reject", stage, feedback }));
     document.getElementById("run-topic").textContent = State.topic;
     showPage("p-running");
@@ -364,10 +496,146 @@ const App = {
     const rowId = stage === "structure" ? "str-feedback-row" : "scr-feedback-row";
     const row = document.getElementById(rowId);
     if (!row) return;
-    row.style.display = row.style.display === "block" ? "none" : "block";
-    if (row.style.display === "block") {
-      row.querySelector("textarea")?.focus();
+    const isVisible = row.style.display === "block";
+    row.style.display = isVisible ? "none" : "block";
+    if (!isVisible) row.querySelector("textarea")?.focus();
+  },
+
+  // ── 대본 직접 입력 모달 ────────────────────────────────
+  toggleScriptPaste() {
+    const modal = document.getElementById("script-paste-modal");
+    if (!modal) return;
+    const isVisible = modal.classList.contains("visible");
+    if (!isVisible) {
+      modal.classList.add("visible");
+      setTimeout(() => document.getElementById("script-paste-area")?.focus(), 60);
+    } else {
+      modal.classList.remove("visible");
+      const ta = document.getElementById("script-paste-area");
+      if (ta) ta.value = "";
+      const cnt = document.getElementById("paste-line-count");
+      if (cnt) cnt.textContent = "0줄";
     }
+  },
+
+  handleScriptUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const ta = document.getElementById("script-paste-area");
+      if (ta) {
+        ta.value = e.target.result;
+        App._updatePasteCount();
+      }
+    };
+    reader.readAsText(file, "UTF-8");
+    event.target.value = "";
+  },
+
+  _updatePasteCount() {
+    const ta = document.getElementById("script-paste-area");
+    if (!ta) return;
+    const lines = ta.value.split("\n").filter(l => l.trim());
+    const chars = lines.join("").length;
+    const secs  = Math.round(chars / 280 * 60);
+    const el    = document.getElementById("paste-line-count");
+    if (!el) return;
+    el.textContent = lines.length
+      ? `${lines.length}줄 · ${chars}자 · 약 ${secs}초`
+      : "입력 대기";
+  },
+
+  async useCustomScript() {
+    const ta = document.getElementById("script-paste-area");
+    if (!ta) return;
+    const lines = ta.value.split("\n").map(l => l.trim()).filter(Boolean);
+    if (!lines.length) {
+      alert("대본 내용을 입력해주세요.");
+      return;
+    }
+    const customPayload = {
+      lines,
+      total_chars: lines.join("").length,
+      estimated_seconds: Math.round(lines.join("").length / 280 * 60),
+    };
+    State.gatePayloads.script = customPayload;
+    if (State.episodeId && !Demo.active) {
+      try {
+        await fetch(`/api/episodes/${State.episodeId}/stages/script`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lines }),
+        });
+      } catch {}
+    }
+    renderScript(customPayload);
+    App.toggleScriptPaste();
+  },
+
+  toggleScriptPlay() {
+    if (typeof speechSynthesis === "undefined") {
+      alert("이 브라우저는 음성 미리 듣기를 지원하지 않습니다.");
+      return;
+    }
+    const btn = document.getElementById("script-play-btn");
+    const status = document.getElementById("script-play-status");
+
+    if (speechSynthesis.speaking || speechSynthesis.pending) {
+      speechSynthesis.cancel();
+      btn.textContent = "▶ 미리 듣기";
+      btn.classList.remove("playing");
+      if (status) status.textContent = "";
+      State.speechIdx = -1;
+      document.querySelectorAll(".s-line-row.speaking")
+        .forEach(el => el.classList.remove("speaking"));
+      return;
+    }
+
+    const lines = State.scriptLines;
+    if (!lines.length) return;
+
+    btn.textContent = "⏹ 정지";
+    btn.classList.add("playing");
+
+    function speakLine(idx) {
+      if (idx >= lines.length) {
+        btn.textContent = "▶ 미리 듣기";
+        btn.classList.remove("playing");
+        if (status) status.textContent = "";
+        State.speechIdx = -1;
+        document.querySelectorAll(".s-line-row.speaking")
+          .forEach(el => el.classList.remove("speaking"));
+        return;
+      }
+      State.speechIdx = idx;
+      // 현재 줄 하이라이트
+      document.querySelectorAll(".s-line-row").forEach((el, i) =>
+        el.classList.toggle("speaking", i === idx));
+      const row = document.querySelectorAll(".s-line-row")[idx];
+      row?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      if (status) status.textContent = `${idx + 1} / ${lines.length}줄`;
+
+      const utt = new SpeechSynthesisUtterance(lines[idx]);
+      utt.lang = "ko-KR";
+      utt.rate = 0.95;
+      utt.onend = () => speakLine(idx + 1);
+      utt.onerror = () => speakLine(idx + 1);
+      speechSynthesis.speak(utt);
+    }
+
+    speakLine(0);
+  },
+
+  stopScriptPlay() {
+    if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+    const btn = document.getElementById("script-play-btn");
+    if (btn) { btn.textContent = "▶ 미리 듣기"; btn.classList.remove("playing"); }
+    const status = document.getElementById("script-play-status");
+    if (status) status.textContent = "";
+    State.speechIdx = -1;
+    document.querySelectorAll(".s-line-row.speaking")
+      .forEach(el => el.classList.remove("speaking"));
   },
 
   togglePlay() {
@@ -396,10 +664,408 @@ const App = {
     showPage("p-start");
   },
 
+  retryStage() {
+    document.getElementById("esc-overlay").classList.remove("visible");
+    if (!State.topic) { showPage("p-start"); return; }
+
+    const ws = new WebSocket(`ws://${location.host}`);
+    State.ws = ws;
+
+    ws.onopen = () => {
+      // fresh 없이 시작 → StateManager가 기존 state.json 로드, 완료 단계 건너뜀
+      ws.send(JSON.stringify({ type: "start", topic: State.topic, intent: State.intent }));
+      document.getElementById("log-lines").innerHTML = "";
+      document.getElementById("run-topic").textContent = State.topic;
+      document.getElementById("run-title").textContent = "재시도 중...";
+      document.getElementById("run-sub").textContent   = "마지막 실패 단계부터 재시작합니다.";
+      showPage("p-running");
+    };
+    ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch {} };
+    ws.onclose   = () => { State.ws = null; };
+  },
+
+  resumeLast() {
+    if (!State._resume) return;
+    State.topic  = State._resume.topic;
+    State.intent = State._resume.intent;
+    const ws = new WebSocket(`ws://${location.host}`);
+    State.ws = ws;
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "start", topic: State.topic, intent: State.intent }));
+      document.getElementById("log-lines").innerHTML = "";
+      document.getElementById("run-topic").textContent = State.topic;
+      document.getElementById("run-title").textContent = "이어서 진행 중...";
+      document.getElementById("run-sub").textContent   = `마지막 완료 단계(${STAGE_KO[State._resume.lastStage] ?? State._resume.lastStage})부터 재시작합니다.`;
+      showPage("p-running");
+    };
+    ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch {} };
+    ws.onclose   = () => { State.ws = null; };
+  },
+
   dismissEscalation() {
     document.getElementById("esc-overlay").classList.remove("visible");
+    // 시작 화면으로 돌아가 이어하기 카드 표시
+    loadResumeCard();
+    showPage("p-start");
   },
+
+  // ── 에피소드 뷰어 ────────────────────────────────────
+  openViewer() {
+    showPage("p-viewer");
+    loadEpisodeList();
+  },
+
+  async selectEpisode(episodeId) {
+    document.querySelectorAll(".ep-item").forEach(el =>
+      el.classList.toggle("active", el.dataset.id === episodeId));
+    const res  = await fetch(`/api/episodes/${episodeId}`);
+    const data = await res.json();
+    renderViewer(data);
+  },
+
+  async resetAndRun(episodeId, stage) {
+    if (!confirm(`"${STAGE_KO[stage] ?? stage}" 단계부터 다시 실행할까요?\n이후 단계 데이터가 삭제됩니다.`)) return;
+    await fetch(`/api/episodes/${episodeId}/reset-from/${stage}`, { method: "POST" });
+
+    // 뷰어 닫고 파이프라인 재시작
+    const res   = await fetch(`/api/episodes/${episodeId}`);
+    const data  = await res.json();
+    State.topic  = data.topic;
+    State.intent = data.intent ?? "";
+
+    const ws = new WebSocket(`ws://${location.host}`);
+    State.ws = ws;
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "start", topic: State.topic, intent: State.intent, episodeId }));
+      document.getElementById("log-lines").innerHTML = "";
+      document.getElementById("run-topic").textContent = State.topic;
+      document.getElementById("run-title").textContent = `${STAGE_KO[stage] ?? stage}부터 재실행 중...`;
+      document.getElementById("run-sub").textContent   = "이전 완료 단계는 건너뜁니다.";
+      showPage("p-running");
+    };
+    ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch {} };
+    ws.onclose   = () => { State.ws = null; };
+  },
+
+  // 실행 중 스텝바 클릭 → 완료 단계 내용 오버레이로 조회
+  async viewStage(stageName) {
+    // 데모 모드: gatePayloads(이미 수신된) 또는 DEMO_DATA로 오버레이 표시
+    if (Demo.active) {
+      const payload = State.gatePayloads[stageName] ?? DEMO_DATA[stageName];
+      if (!payload) { alert(`${stageName} 단계 데이터 없음`); return; }
+      showStageOverlay("demo", stageName, {
+        stages: { [stageName]: { status: "verified", decision_log: "데모 모드", payload } },
+      });
+      return;
+    }
+    const epId = State.episodeId;
+    if (!epId) { alert("현재 진행 중인 에피소드 정보가 없습니다.\n에피소드 기록에서 확인해주세요."); return; }
+    try {
+      const res   = await fetch(`/api/episodes/${epId}`);
+      const state = await res.json();
+      showStageOverlay(epId, stageName, state);
+    } catch { alert("단계 데이터를 불러오지 못했습니다."); }
+  },
+
+  // 완료 단계 스텝바 클릭 → 해당 gate 페이지로 풀 네비게이션
+  backTo(stage) {
+    const payload = State.gatePayloads[stage] ?? (Demo.active ? DEMO_DATA[stage] : null);
+    const done = getDoneStages(stage);
+
+    if (stage === "research" && payload) {
+      buildStepbar("res-stepbar", "research", done);
+      document.getElementById("res-topic").textContent = State.topic;
+      renderClaims(payload);
+      showPage("p-gate-research");
+    } else if (stage === "structure" && payload) {
+      buildStepbar("str-stepbar", "structure", done);
+      document.getElementById("str-topic").textContent = State.topic;
+      renderBeats(payload);
+      showPage("p-gate-structure");
+    } else if (stage === "script" && payload) {
+      buildStepbar("scr-stepbar", "script", done);
+      document.getElementById("scr-topic").textContent = State.topic;
+      renderScript(payload);
+      showPage("p-gate-script");
+    } else if (stage === "voice" && payload) {
+      buildStepbar("voi-stepbar", "voice", done);
+      document.getElementById("voi-topic").textContent = State.topic;
+      renderVoice(payload);
+      showPage("p-gate-voice");
+    } else if (stage === "dashboard") {
+      _showDashboardGate();
+    } else if (stage === "visual" || stage === "render") {
+      showPage("p-auto");
+    }
+  },
+
+  // 대본+B롤 대시보드
+  async openDashboard() {
+    State._prevPage = document.querySelector(".page.active")?.id ?? "p-running";
+
+    // 데모 모드 또는 에피소드 없는 경우 → DEMO_DATA 직접 사용
+    if (Demo.active || !State.episodeId || State.episodeId === "demo") {
+      const mockState = {
+        topic: State.topic || "데모",
+        stages: {
+          structure: { payload: DEMO_DATA.structure },
+          script:    { payload: DEMO_DATA.script },
+          visual:    { payload: DEMO_DATA.visual },
+        },
+      };
+      renderDashboard(mockState);
+      showPage("p-dashboard");
+      return;
+    }
+    try {
+      const res   = await fetch(`/api/episodes/${State.episodeId}`);
+      const state = await res.json();
+      renderDashboard(state);
+      showPage("p-dashboard");
+    } catch { alert("대시보드 데이터를 불러오지 못했습니다."); }
+  },
+
+  closeDashboard() { showPage(State._prevPage ?? "p-running"); },
 };
+
+// ── 유틸 ────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+// ── 단계 오버레이 ────────────────────────────────────────
+function showStageOverlay(epId, stageName, epState) {
+  const NAMES = { research:"리서치", structure:"구성", script:"대본", voice:"음성", visual:"비주얼", render:"렌더" };
+  const st = epState?.stages?.[stageName];
+  if (!st) { alert(`${stageName} 단계 데이터 없음`); return; }
+
+  document.getElementById("ov-title").textContent = `${NAMES[stageName] ?? stageName} — ${st.status}`;
+  const body = document.getElementById("ov-body");
+  body.innerHTML = "";
+
+  if (st.decision_log) {
+    const log = document.createElement("div");
+    log.className = "ov-log-block";
+    log.innerHTML = `<div class="ov-label">결정 로그</div><div class="ov-log-text">${escHtml(st.decision_log)}</div>`;
+    body.appendChild(log);
+  }
+
+  const payload = st.payload;
+  if (payload) {
+    body.appendChild(renderStagePayload(stageName, payload));
+  } else {
+    const empty = document.createElement("div");
+    empty.className = "vw-no-data";
+    empty.textContent = "payload 없음 (아직 실행 전이거나 실패한 단계)";
+    body.appendChild(empty);
+  }
+
+  const saveBtn = document.getElementById("ov-save-btn");
+  saveBtn.style.display = (["script","structure","research"].includes(stageName) && epId !== "demo") ? "inline-flex" : "none";
+  saveBtn.dataset.epId = epId;
+  saveBtn.dataset.stage = stageName;
+
+  document.getElementById("stage-overlay").style.display = "flex";
+}
+
+function closeStageOverlay() {
+  document.getElementById("stage-overlay").style.display = "none";
+}
+
+function renderStagePayload(stageName, payload) {
+  const wrap = document.createElement("div");
+  wrap.className = "ov-payload";
+
+  if (stageName === "research" && payload.claims) {
+    wrap.innerHTML = `<div class="ov-label">수집된 클레임 (${payload.claims.length}개)</div>`;
+    payload.claims.forEach((c, i) => {
+      const el = document.createElement("div");
+      el.className = "ov-claim-item";
+      el.innerHTML = `<div class="ov-claim-num">${i+1}</div>
+        <div class="ov-claim-body">
+          <div class="ov-claim-text" contenteditable="true" data-idx="${i}">${escHtml(c.text)}</div>
+          <div class="ov-claim-meta">${escHtml(c.value ?? "")} &nbsp;·&nbsp; <a href="${escHtml(c.source_url ?? "#")}" target="_blank" class="ov-claim-link">${escHtml(c.source_date ?? "출처")}</a></div>
+        </div>`;
+      wrap.appendChild(el);
+    });
+
+  } else if (stageName === "structure" && payload.beats) {
+    wrap.innerHTML = `<div class="ov-label">비트 구성 (${payload.beats.length}개)</div>`;
+    payload.beats.forEach((b, i) => {
+      const el = document.createElement("div");
+      el.className = "ov-beat-item";
+      el.innerHTML = `<div class="ov-beat-num">${i+1}</div>
+        <div class="ov-beat-body">
+          <div class="ov-beat-purpose">${escHtml(b.purpose)}</div>
+          <div class="ov-beat-desc" contenteditable="true" data-idx="${i}">${escHtml(b.content ?? b.description ?? "")}</div>
+          <div class="ov-beat-sec">${b.duration_seconds ?? 0}초</div>
+        </div>`;
+      wrap.appendChild(el);
+    });
+
+  } else if (stageName === "script" && payload.lines) {
+    wrap.innerHTML = `<div class="ov-label">대본 줄 (${payload.lines.length}줄 / 추정 ${payload.estimated_seconds ?? "?"}초)</div>`;
+    payload.lines.forEach((line, i) => {
+      const el = document.createElement("div");
+      el.className = "ov-script-line";
+      el.innerHTML = `<span class="ov-line-num">${i+1}</span>
+        <span class="ov-line-text" contenteditable="true" data-idx="${i}">${escHtml(line)}</span>`;
+      wrap.appendChild(el);
+    });
+
+  } else if (stageName === "voice") {
+    const audioPath = payload.audio_path ?? "";
+    wrap.innerHTML = `<div class="ov-label">음성 파일</div>
+      <div class="ov-voice-card">
+        <div class="ov-voice-path">${escHtml(audioPath)}</div>
+        ${audioPath ? `<audio controls src="/${audioPath.replace(/\\/g,'/')}" style="width:100%;margin-top:10px"></audio>` : '<div class="ov-no-audio">파일 없음</div>'}
+        <div class="ov-voice-meta">추정 ${payload.estimated_seconds ?? "?"}초 · 오프셋 ${payload.sync_offset_ms ?? 0}ms</div>
+      </div>`;
+
+  } else if (stageName === "visual" && payload.assets) {
+    wrap.innerHTML = `<div class="ov-label">비주얼 에셋 (${payload.assets.length}개)</div>`;
+    payload.assets.forEach(a => {
+      const el = document.createElement("div");
+      el.className = "ov-asset-item";
+      const src = a.file_path ? `/${a.file_path.replace(/\\/g,'/')}` : "";
+      el.innerHTML = `<div class="ov-asset-beat">${escHtml(a.beat_id ?? "")}</div>
+        ${src ? `<img src="${src}" class="ov-asset-thumb" alt="${escHtml(a.beat_id ?? '')}" onerror="this.style.display='none'">` : ""}
+        <div class="ov-asset-path">${escHtml(a.file_path ?? "")}</div>`;
+      wrap.appendChild(el);
+    });
+
+  } else if (stageName === "render") {
+    const vidPath = payload.video_path ?? "";
+    wrap.innerHTML = `<div class="ov-label">렌더링 결과</div>
+      <div class="ov-voice-card">
+        <div class="ov-voice-path">${escHtml(vidPath)}</div>
+        ${vidPath ? `<video controls src="/${vidPath.replace(/\\/g,'/')}" style="width:100%;max-height:280px;margin-top:10px"></video>` : '<div class="ov-no-audio">파일 없음</div>'}
+      </div>`;
+
+  } else {
+    const pre = document.createElement("pre");
+    pre.className = "vw-json";
+    pre.textContent = JSON.stringify(payload, null, 2);
+    wrap.appendChild(pre);
+  }
+
+  return wrap;
+}
+
+async function saveStageEdit() {
+  const btn = document.getElementById("ov-save-btn");
+  const epId = btn.dataset.epId;
+  const stage = btn.dataset.stage;
+  const body = document.getElementById("ov-body");
+  const updates = {};
+
+  if (stage === "script") {
+    const lines = [];
+    body.querySelectorAll(".ov-line-text").forEach(el => lines.push(el.textContent.trim()));
+    updates.lines = lines;
+  } else if (stage === "structure") {
+    const descs = [];
+    body.querySelectorAll(".ov-beat-desc").forEach(el => descs.push(el.textContent.trim()));
+    updates.beat_descriptions = descs;
+  } else if (stage === "research") {
+    const texts = [];
+    body.querySelectorAll(".ov-claim-text").forEach(el => texts.push(el.textContent.trim()));
+    updates.claim_texts = texts;
+  }
+
+  try {
+    const res = await fetch(`/api/episodes/${epId}/stages/${stage}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+    if (res.ok) {
+      const orig = btn.innerHTML;
+      btn.textContent = "✓ 저장됨";
+      setTimeout(() => { btn.innerHTML = orig; }, 1800);
+    } else { alert("저장 실패"); }
+  } catch { alert("저장 요청 오류"); }
+}
+
+// ── 대시보드 렌더링 (Vrew 테이블 방식) ────────────────────
+function renderDashboard(epState) {
+  const topicEl = document.getElementById("dash-topic");
+  if (topicEl) topicEl.textContent = epState?.topic ?? "대시보드";
+  renderVrewTable(epState, "dash-body");
+}
+
+function renderVrewTable(epState, targetId) {
+  const body = document.getElementById(targetId);
+  if (!body) return;
+
+  const beats  = epState?.stages?.structure?.payload?.beats  ?? [];
+  const lines  = epState?.stages?.script?.payload?.lines     ?? [];
+  const assets = epState?.stages?.visual?.payload?.assets    ?? [];
+
+  if (!beats.length && !lines.length) {
+    body.innerHTML = '<div class="vrew-empty">대본·구성 데이터가 없습니다<br><span style="font-size:12px;color:var(--t3)">구성·대본 단계까지 완료된 후 확인하세요</span></div>';
+    return;
+  }
+
+  const COLORS = ["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#6366f1"];
+  const numBeats = Math.max(beats.length, 1);
+  const perBeat  = Math.ceil(lines.length / numBeats);
+
+  let html = `<div class="vrew-table-head">
+    <div class="vrew-col-head">비트</div>
+    <div class="vrew-col-head">B롤</div>
+    <div class="vrew-col-head">대본</div>
+  </div>`;
+
+  beats.forEach((beat, bi) => {
+    const beatLines = lines.slice(bi * perBeat, (bi + 1) * perBeat);
+    const asset     = assets[bi] ?? null;
+    const assetSrc  = asset?.file_path ? `/${asset.file_path.replace(/\\/g,'/')}` : "";
+    const assetDescRaw = asset?.description ?? asset?.beat_id ?? "";
+    const assetDesc = escHtml(assetDescRaw);
+    const color     = COLORS[bi % COLORS.length];
+    const label     = escHtml(beat.purpose ?? `BEAT ${bi + 1}`);
+    const desc      = escHtml(beat.content ?? beat.description ?? "");
+    const sec       = beat.duration_seconds ? `⏱ ${beat.duration_seconds}초` : "";
+
+    const thumbInner = assetSrc
+      ? `<img src="${escHtml(assetSrc)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block" onerror="this.closest('.vrew-thumb').innerHTML='<div class=\\'vrew-thumb-ph\\'><div class=\\'vrew-thumb-ph-icon\\' style=\\'color:${color}\\'>🖼</div></div>'">`
+      : `<div class="vrew-thumb-ph" style="background:${color}0d">
+           <div class="vrew-thumb-ph-icon" style="color:${color}">🖼</div>
+           ${assetDesc ? `<div class="vrew-thumb-ph-txt">${assetDesc}</div>` : ""}
+         </div>`;
+
+    const scriptHtml = beatLines.length
+      ? beatLines.map((line, li) =>
+          `<div class="vrew-script-line">
+            <span class="vrew-line-idx">${bi * perBeat + li + 1}</span>
+            <span class="vrew-line-txt">${escHtml(line)}</span>
+          </div>`).join("")
+      : '<div class="vrew-no-script">대본 없음</div>';
+
+    html += `<div class="vrew-row">
+      <div class="vrew-beat-cell">
+        <span class="vrew-beat-badge" style="background:${color}18;color:${color};border-color:${color}44">${label}</span>
+        ${sec  ? `<span class="vrew-beat-sec">${sec}</span>`   : ""}
+        ${desc ? `<div class="vrew-beat-desc">${desc}</div>` : ""}
+      </div>
+      <div class="vrew-broll-cell">
+        <div class="vrew-thumb">${thumbInner}</div>
+        ${assetDesc ? `<div class="vrew-broll-desc">${assetDesc}</div>` : ""}
+      </div>
+      <div class="vrew-script-cell">${scriptHtml}</div>
+    </div>`;
+  });
+
+  body.innerHTML = html;
+}
+
+function brollPlaceholder(desc, color) {
+  return `<div class="vrew-thumb-ph" style="background:${color}0d">
+    <div class="vrew-thumb-ph-icon" style="color:${color}">🖼</div>
+    <div class="vrew-thumb-ph-txt">${escHtml(desc || "B롤 미생성")}</div>
+  </div>`;
+}
 
 // ── 데모 모드 ──────────────────────────────────────────
 const DEMO_DATA = {
@@ -429,6 +1095,13 @@ const DEMO_DATA = {
     "지금 당장 할 것: 원하는 단지의 거래량 체크. 3개월 추이를 보십시오.",
   ], total_chars: 310, estimated_seconds: 68 },
   voice: { audio_path: "", estimated_seconds: 68, sync_offset_ms: 12 },
+  visual: { assets: [
+    { beat_id: "HOOK",   file_path: "", description: "서울 아파트 야경 — 조명이 켜진 아파트 단지" },
+    { beat_id: "BEAT 1", file_path: "", description: "한국은행 건물 외관, 금리 그래프 오버레이" },
+    { beat_id: "BEAT 2", file_path: "", description: "역사적 금리 차트 — 2019~2026 추이" },
+    { beat_id: "BEAT 3", file_path: "", description: "서울 지도 위 수혜 지역 하이라이트" },
+    { beat_id: "결말",   file_path: "", description: "스마트폰으로 부동산 앱 검색하는 손" },
+  ]},
   final: { total_seconds: 90, video_path: "output/demo/video.mp4" },
 };
 
@@ -460,7 +1133,8 @@ const Demo = {
       research:  () => Demo._runStage("structure", 300),
       structure: () => Demo._runStage("script",    300),
       script:    () => Demo._runStage("voice",     300),
-      voice:     () => Demo._autoPhase(),
+      voice:     () => _showDashboardGate(),  // 음성 승인 → 대본+B롤 게이트
+      dashboard: () => Demo._autoPhase(),     // 대본+B롤 승인 → 비주얼 자동 시작
       final:     () => Demo._complete(),
     };
     (seq[stage] ?? (() => {}))();
@@ -523,6 +1197,29 @@ App.reset = (function(orig) {
   return function() { Demo.stop(); orig(); };
 })(App.reset.bind(App));
 
+// ── 시작 화면 이어하기 카드 ───────────────────────────
+const STAGE_KO = {
+  research: "리서치", structure: "구성", script: "대본",
+  voice: "음성", visual: "비주얼", render: "렌더",
+};
+
+async function loadResumeCard() {
+  try {
+    const res  = await fetch("/api/resume");
+    const data = await res.json();
+    if (!data) return;
+    State._resume = data;
+    document.getElementById("resume-topic-text").textContent = data.topic;
+    document.getElementById("resume-stage-text").textContent = STAGE_KO[data.lastStage] ?? data.lastStage;
+    const ago = data.updatedAt
+      ? Math.round((Date.now() - new Date(data.updatedAt).getTime()) / 60000) + "분 전"
+      : "";
+    document.getElementById("resume-time-text").textContent = ago;
+    document.getElementById("resume-card").style.display = "block";
+  } catch {}
+}
+loadResumeCard();
+
 // ── 유틸 ──────────────────────────────────────────────
 function esc(str) {
   return String(str ?? "")
@@ -540,3 +1237,137 @@ function safeHostname(url) {
   try { return new URL(url).hostname.replace("www.", ""); }
   catch { return url; }
 }
+
+// ── 에피소드 뷰어 ──────────────────────────────────────
+
+async function loadEpisodeList() {
+  const list = document.getElementById("ep-list");
+  list.innerHTML = '<div class="ep-empty">불러오는 중...</div>';
+  try {
+    const res  = await fetch("/api/episodes");
+    const eps  = await res.json();
+    if (!eps.length) { list.innerHTML = '<div class="ep-empty">에피소드 없음</div>'; return; }
+    list.innerHTML = eps.map(ep => {
+      const statusCls = ep.finalApproved ? "done" : ep.doneCount > 0 ? "partial" : "new";
+      const statusTxt = ep.finalApproved ? "완료" : `${ep.doneCount}/${ep.totalStages}`;
+      const date = ep.updatedAt ? ep.updatedAt.slice(0,10) : "";
+      return `<div class="ep-item" data-id="${esc(ep.episodeId)}" onclick="App.selectEpisode('${esc(ep.episodeId)}')">
+        <div class="ep-item-topic">${esc(ep.topic)}</div>
+        <div class="ep-item-meta">
+          <span class="ep-status ${statusCls}">${statusTxt}</span>
+          <span class="ep-date">${date}</span>
+        </div>
+      </div>`;
+    }).join("");
+  } catch { list.innerHTML = '<div class="ep-empty">로드 실패</div>'; }
+}
+
+function renderViewer(state) {
+  const main = document.getElementById("viewer-main");
+  const stages = ["research","structure","script","voice","visual","render"];
+  const stageLabels = { research:"리서치", structure:"구성", script:"대본", voice:"음성", visual:"비주얼", render:"렌더" };
+  const epId = state.episode_id;
+
+  const tabs = stages.map(s => {
+    const st = state.stages?.[s];
+    const hasData = st?.payload !== null && st?.payload !== undefined;
+    const cls = st?.status === "verified" && st?.human_approved ? "done"
+              : st?.status === "in_progress" || st?.status === "produced" ? "active" : "wait";
+    const clickable = st?.status !== undefined && st?.status !== null && st?.status !== "pending";
+    const onclick = clickable ? `onclick="renderStageContent('${epId}', '${s}', this)"` : "";
+    return `<button class="vw-tab ${cls}${clickable ? "" : " disabled"}" ${onclick} title="${clickable ? stageLabels[s] : "아직 실행 안 됨"}">${stageLabels[s]}</button>`;
+  }).join("");
+
+  main.innerHTML = `
+    <div class="vw-header">
+      <div class="vw-topic">${esc(state.topic)}</div>
+      <div class="vw-ep-id">${esc(epId)}</div>
+    </div>
+    <div class="vw-tabs">${tabs}</div>
+    <div class="vw-content" id="vw-content">
+      <div class="viewer-placeholder">위에서 단계를 선택하세요</div>
+    </div>`;
+
+  // 첫 번째 완료 단계 자동 선택
+  const firstDone = stages.find(s => {
+    const st = state.stages?.[s];
+    return st?.status === "verified" || st?.status === "produced" || st?.status === "in_progress";
+  });
+  if (firstDone) {
+    const btn = main.querySelector(`.vw-tab`);
+    const targetBtn = [...main.querySelectorAll(".vw-tab")].find((_, i) => stages[i] === firstDone);
+    if (targetBtn) renderStageContent(epId, firstDone, targetBtn);
+  }
+}
+
+async function renderStageContent(epId, stageName, btnEl) {
+  // 탭 활성화
+  btnEl.closest(".vw-tabs").querySelectorAll(".vw-tab").forEach(b => b.classList.remove("sel"));
+  btnEl.classList.add("sel");
+
+  const res   = await fetch(`/api/episodes/${epId}`);
+  const state = await res.json();
+  const stage = state.stages?.[stageName];
+  const payload = stage?.payload;
+  const content = document.getElementById("vw-content");
+
+  const statusBadge = stage?.status === "verified" && stage?.human_approved
+    ? '<span class="vw-badge done">완료</span>'
+    : stage?.status === "in_progress" ? '<span class="vw-badge run">진행중</span>'
+    : stage?.status === "produced"    ? '<span class="vw-badge run">생성됨</span>'
+    : '<span class="vw-badge wait">미실행</span>';
+
+  let payloadHtml = "";
+  if (!payload) {
+    payloadHtml = '<div class="vw-no-data">아직 데이터 없음</div>';
+  } else if (stageName === "research" && payload.claims) {
+    payloadHtml = `<div class="claims-list">${payload.claims.map(c => `
+      <div class="claim-card">
+        <div class="claim-body">
+          <div class="claim-text">${esc(c.text)}</div>
+          <div class="claim-value">${esc(c.value)}</div>
+          ${c.source_url ? `<a class="claim-src" href="${esc(c.source_url)}" target="_blank">${esc(safeHostname(c.source_url))} · ${esc(c.source_date ?? "")}</a>` : ""}
+        </div>
+      </div>`).join("")}</div>`;
+  } else if (stageName === "structure" && payload.beats) {
+    payloadHtml = `<div class="beats-list">${payload.beats.map((b,i) => `
+      <div class="beat-card">
+        <div class="beat-num">${i+1}</div>
+        <div class="beat-body">
+          <div class="beat-purpose">${esc(b.purpose)}</div>
+          <div class="beat-desc">${esc(b.description)}</div>
+          <div class="beat-dur">${b.duration_seconds}초</div>
+        </div>
+      </div>`).join("")}</div>`;
+  } else if (stageName === "script" && payload.lines) {
+    payloadHtml = `<div class="script-box">${payload.lines.map((l,i) => `
+      <div class="s-line-row"><span class="s-num">${i+1}</span><span class="s-text">${esc(l)}</span></div>`
+    ).join("")}</div>`;
+  } else if (stageName === "voice" && payload.audio_path) {
+    const rel = payload.audio_path.replace(/\\/g,"/").split("output/").pop();
+    payloadHtml = `<div class="audio-card">
+      <audio controls src="/output/${esc(rel)}" style="width:100%;margin:16px 0"></audio>
+      <div style="font-size:12px;color:#475569">${esc(payload.audio_path)}</div>
+    </div>`;
+  } else {
+    payloadHtml = `<pre class="vw-json">${esc(JSON.stringify(payload, null, 2))}</pre>`;
+  }
+
+  const stageLabels = { research:"리서치", structure:"구성", script:"대본", voice:"음성", visual:"비주얼", render:"렌더" };
+  content.innerHTML = `
+    <div class="vw-stage-head">
+      <span class="vw-stage-name">${stageLabels[stageName] ?? stageName}</span>
+      ${statusBadge}
+      <button class="vw-run-btn" onclick="App.resetAndRun('${esc(epId)}', '${esc(stageName)}')">↺ 이 단계부터 재실행</button>
+    </div>
+    ${stage?.decision_log ? `<div class="vw-log">${esc(stage.decision_log)}</div>` : ""}
+    ${payloadHtml}`;
+}
+
+// ── 단축키 ─────────────────────────────────────────────
+document.addEventListener("keydown", (e) => {
+  const modal = document.getElementById("script-paste-modal");
+  if (!modal?.classList.contains("visible")) return;
+  if (e.key === "Escape") { e.preventDefault(); App.toggleScriptPaste(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); App.useCustomScript(); }
+});

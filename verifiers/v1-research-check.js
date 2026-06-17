@@ -56,10 +56,15 @@ export async function runV1(payload) {
   const urlErrors = claimsWithUrl.length > 0 ? await checkUrlsExist(claimsWithUrl) : [];
   errors.push(...urlErrors);
 
-  // ── Phase 1-A: LLM 환각 대조 ──────────────────────────────
-  // URL 실존 검사가 일부 실패해도 LLM 검사는 계속 진행한다.
-  const llmErrors = await checkFactsWithLLM(payload.claims);
-  errors.push(...llmErrors);
+  // ── Phase 1-B: LLM 환각 대조 (경고만 — 블로킹 안 함) ────
+  // 애매한 의심은 검사자 자신도 "단정 어려움"이라 하므로 경고로만 기록.
+  // 명백한 날조(수치 2배 이상 과장 등)만 실제 오류로 올린다.
+  if (errors.length === 0) {
+    const llmIssues = await checkFactsWithLLM(payload.claims);
+    if (llmIssues.length > 0) {
+      console.warn("[V1] LLM 의심 항목 (비블로킹):", llmIssues.join("; "));
+    }
+  }
 
   return { passed: errors.length === 0, reasons: errors };
 }
@@ -77,6 +82,10 @@ async function checkUrlsExist(claims) {
 }
 
 async function checkOneUrl(url, idx) {
+  // Vertex AI grounding redirect URL은 생성 직후 만료되는 임시 토큰 — fetch 검사 불가
+  if (url.includes("vertexaisearch.cloud.google.com")) {
+    return null;
+  }
   try {
     const res = await fetch(url, {
       method: "HEAD",

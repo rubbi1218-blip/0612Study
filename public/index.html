@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>영상 자동제작</title>
+<title>VideoAI — 영상 자동제작</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -12,45 +12,143 @@
 
   <!-- ① 시작 -->
   <div class="page active" id="p-start">
-    <div class="start-card">
-      <div class="start-title">어떤 영상을<br>만들까요?</div>
-      <div class="start-sub">주제와 의도만 입력하면 AI가 리서치부터 완성 영상까지 자동으로 만들어드립니다.</div>
-      <div class="field">
-        <label class="f-label">영상 주제</label>
-        <input id="inp-topic" class="f-inp" placeholder="예: Fed 금리 인하와 한국 부동산" />
-        <div class="f-hint">구체적일수록 정확해집니다 — 숫자, 기간, 국가를 넣어보세요</div>
-      </div>
-      <div class="field">
-        <label class="f-label">시청자에게 남길 것</label>
-        <textarea id="inp-intent" class="f-inp f-ta" placeholder="예: '나 이거 몰랐다' 느낌을 주고, 시청 후 ETF 검색하게 만들기"></textarea>
-        <div class="f-hint">영상 후 시청자가 느낄 감정과 취할 행동을 자유롭게 써주세요</div>
-      </div>
-      <button class="btn-primary" onclick="App.start()">🚀 &nbsp; 영상 제작 시작</button>
-      <button class="btn-demo" onclick="App.demo()" style="width:100%;margin-top:10px;background:transparent;border:1.5px solid #334155;color:#64748b;padding:13px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;" onmouseover="this.style.borderColor='#475569';this.style.color='#94a3b8'" onmouseout="this.style.borderColor='#334155';this.style.color='#64748b'">🎬 &nbsp; 데모 모드 — API 없이 모든 화면 미리보기</button>
-      <div style="margin-top:28px;padding-top:24px;border-top:1px solid #1e293b">
-        <div class="f-hint" style="margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">예시 주제</div>
+    <div class="start-layout">
+
+      <!-- 왼쪽 히어로 패널 -->
+      <div class="start-hero">
+        <div class="hero-logo">
+          <div class="hero-logo-icon">🎬</div>
+          <div>
+            <div class="hero-logo-name">VideoAI</div>
+          </div>
+          <div class="hero-logo-tag">BETA</div>
+        </div>
+
+        <div class="hero-headline">주제 하나로<br><em>완성 영상</em>까지</div>
+        <div class="hero-sub">리서치 · 대본 · 음성 · 비주얼 · 렌더링을<br>AI가 자동으로 처리합니다.<br>사람은 3번만 승인하면 됩니다.</div>
+
+        <div class="hero-flow">
+          <div class="hero-flow-step"><div class="hero-flow-num">1</div>주제 입력</div>
+          <div class="hero-flow-arrow">›</div>
+          <div class="hero-flow-step"><div class="hero-flow-num">2</div>구성 승인</div>
+          <div class="hero-flow-arrow">›</div>
+          <div class="hero-flow-step"><div class="hero-flow-num">3</div>최종 확인</div>
+        </div>
+
+        <div class="hero-ex-label">예시 주제</div>
         <div class="chips">
-          <span class="chip" onclick="App.fillExample('반도체 수출 급락 이유')">반도체 수출 급락 이유</span>
+          <span class="chip" onclick="App.fillExample('반도체 수출 급락 이유')">반도체 수출 급락</span>
           <span class="chip" onclick="App.fillExample('엔화 약세 수혜주')">엔화 약세 수혜주</span>
-          <span class="chip" onclick="App.fillExample('테슬라 로보택시 현실')">테슬라 로보택시 현실</span>
-          <span class="chip" onclick="App.fillExample('한국 가계부채 경고')">한국 가계부채 경고</span>
+          <span class="chip" onclick="App.fillExample('테슬라 로보택시 현실')">테슬라 로보택시</span>
+          <span class="chip" onclick="App.fillExample('한국 가계부채 경고')">한국 가계부채</span>
         </div>
       </div>
+
+      <!-- 오른쪽 폼 패널 -->
+      <div class="start-form-panel">
+        <div class="start-form-card">
+          <div class="sfc-title">새 영상 만들기</div>
+
+          <div class="field">
+            <label class="f-label">영상 주제</label>
+            <input id="inp-topic" class="f-inp" placeholder="예: Fed 금리 인하와 한국 부동산" />
+            <div class="f-hint">구체적일수록 정확합니다 — 숫자, 기간, 국가를 포함하세요</div>
+          </div>
+          <div class="field">
+            <label class="f-label">시청자에게 남길 것</label>
+            <textarea id="inp-intent" class="f-inp f-ta" placeholder="예: '나 이거 몰랐다' 느낌을 주고, 시청 후 ETF 검색하게 만들기"></textarea>
+          </div>
+
+          <div class="sect-label">포맷</div>
+          <div class="fmt-row">
+            <button class="fmt-btn sel" id="fmt-short" onclick="App.setFormat('short')">
+              <span class="fmt-icon">📱</span>
+              <span class="fmt-name">숏폼</span>
+              <span class="fmt-desc">60~90초 · 9:16<br>릴스 / 쇼츠</span>
+            </button>
+            <button class="fmt-btn" id="fmt-long" onclick="App.setFormat('long')">
+              <span class="fmt-icon">🖥️</span>
+              <span class="fmt-name">롱폼</span>
+              <span class="fmt-desc">5~15분 · 16:9<br>YouTube</span>
+            </button>
+          </div>
+
+          <div class="sect-label">AI 모델</div>
+          <div class="models-grid">
+            <div class="model-row">
+              <span class="model-lbl">리서치</span>
+              <div class="model-btns">
+                <button class="model-btn sel" data-group="research" data-val="gemini" onclick="App.selectModel(this)">Gemini 2.5</button>
+                <button class="model-btn" data-group="research" data-val="gpt4o" onclick="App.selectModel(this)">GPT-4o</button>
+              </div>
+            </div>
+            <div class="model-row">
+              <span class="model-lbl">대본</span>
+              <div class="model-btns">
+                <button class="model-btn sel" data-group="script" data-val="claude" onclick="App.selectModel(this)">Claude Sonnet</button>
+                <button class="model-btn" data-group="script" data-val="gpt4o" onclick="App.selectModel(this)">GPT-4o</button>
+              </div>
+            </div>
+            <div class="model-row">
+              <span class="model-lbl">음성 TTS</span>
+              <div class="model-btns">
+                <button class="model-btn sel" data-group="tts" data-val="elevenlabs" onclick="App.selectModel(this)">ElevenLabs</button>
+                <button class="model-btn" data-group="tts" data-val="qwen3" onclick="App.selectModel(this)">Qwen3 로컬</button>
+              </div>
+            </div>
+            <div class="model-row">
+              <span class="model-lbl">렌더</span>
+              <div class="model-btns">
+                <button class="model-btn sel" data-group="renderer" data-val="remotion" onclick="App.selectModel(this)">Remotion</button>
+                <button class="model-btn" data-group="renderer" data-val="hyperframes" onclick="App.selectModel(this)">HyperFrames</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="resume-card" class="resume-card" style="display:none">
+            <div class="resume-label">↩ 이어하기</div>
+            <div class="resume-topic" id="resume-topic-text"></div>
+            <div class="resume-meta">마지막 단계: <span id="resume-stage-text"></span> · <span id="resume-time-text"></span></div>
+            <button class="btn-resume" onclick="App.resumeLast()">이 주제 이어서 진행</button>
+          </div>
+
+          <div style="margin-top:24px">
+            <button class="btn-primary" onclick="App.start()">🚀 &nbsp; 제작 시작</button>
+            <div class="sfc-secondary-row" style="margin-top:8px">
+              <button class="btn-secondary" onclick="App.demo()">🎬 &nbsp; 데모 미리보기</button>
+              <button class="btn-ghost" onclick="App.openViewer()">📂 &nbsp; 기록 보기</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </div>
   </div>
 
   <!-- ② 실행 중 -->
   <div class="page" id="p-running">
     <div class="topbar">
-      <span class="tb-logo">🎬 영상 자동제작</span><span class="tb-sep"></span>
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
       <span class="tb-topic" id="run-topic"></span>
-      <div class="tb-right"><span class="badge badge-run" id="run-badge">⟳ 실행 중</span></div>
+      <div class="tb-right">
+        <span class="badge badge-run" id="run-badge">⟳ 실행 중</span>
+      </div>
     </div>
     <div id="run-stepbar" class="stepbar"></div>
     <div class="run-body">
-      <div class="run-spinner"></div>
-      <div class="run-title" id="run-title">처리 중...</div>
-      <div class="run-sub" id="run-sub"></div>
+      <div class="run-header-row">
+        <div class="run-spinner"></div>
+        <div class="run-header-text">
+          <div class="run-title" id="run-title">처리 중...</div>
+          <div class="run-sub" id="run-sub"></div>
+        </div>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-track"><div class="progress-fill" id="run-progress-fill"></div></div>
+        <span class="progress-pct" id="run-progress-pct">0%</span>
+      </div>
       <div class="log-stream">
         <div class="log-head"><div class="log-dot"></div>실시간 로그</div>
         <div class="log-lines" id="log-lines"></div>
@@ -61,18 +159,28 @@
   <!-- ③ 리서치 게이트 -->
   <div class="page" id="p-gate-research">
     <div class="topbar">
-      <span class="tb-logo">🎬 영상 자동제작</span><span class="tb-sep"></span>
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
       <span class="tb-topic" id="res-topic"></span>
       <div class="tb-right"><span class="badge badge-wait">⏸ 확인 필요</span></div>
     </div>
     <div id="res-stepbar" class="stepbar"></div>
-    <div class="gate-body">
-      <div class="gate-title">수집된 데이터를 확인해주세요</div>
-      <div class="gate-sub">AI가 수집한 데이터입니다. 이상하면 재수집, 문제없으면 바로 승인해주세요.</div>
-      <div class="claims-list" id="claims-list"></div>
-      <div class="gate-actions">
-        <button class="btn-approve" onclick="App.approve('research')">✅ &nbsp; 확인 완료 — 구성 시작</button>
-        <button class="btn-reject" onclick="App.reject('research')">🔄 재수집</button>
+    <div class="gate-layout">
+      <div class="gate-content">
+        <div class="gate-header-block">
+          <div class="gate-title">수집된 데이터를 확인해주세요</div>
+          <div class="gate-sub">AI가 수집한 팩트와 수치입니다. 출처를 확인하고 문제없으면 승인해주세요.</div>
+        </div>
+        <div class="claims-list" id="claims-list"></div>
+      </div>
+      <div class="gate-panel">
+        <div class="gate-panel-title">리서치 검토</div>
+        <div class="gate-panel-desc">각 항목의 출처 URL과 수치를 확인하세요. 문제가 있으면 재수집합니다.</div>
+        <div class="gate-panel-spacer"></div>
+        <div class="gate-actions">
+          <button class="btn-approve" onclick="App.approve('research')">✅ 확인 완료</button>
+        </div>
+        <button class="btn-reject" style="width:100%" onclick="App.reject('research')">🔄 재수집</button>
       </div>
     </div>
   </div>
@@ -80,22 +188,35 @@
   <!-- ④ 구성 승인 -->
   <div class="page" id="p-gate-structure">
     <div class="topbar">
-      <span class="tb-logo">🎬 영상 자동제작</span><span class="tb-sep"></span>
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
       <span class="tb-topic" id="str-topic"></span>
       <div class="tb-right"><span class="badge badge-wait">⏸ 승인 필요</span></div>
     </div>
     <div id="str-stepbar" class="stepbar"></div>
-    <div class="gate-body">
-      <div class="gate-title">영상 구성을 승인해주세요 <span style="font-size:13px;color:#f59e0b;font-weight:400">— 이후 대본·음성·영상이 자동 제작됩니다</span></div>
-      <div class="gate-sub">AI가 설계한 영상 흐름입니다. 내용·순서·길이를 확인하고 승인해주세요.</div>
-      <div class="total-row" id="str-totals"></div>
-      <div class="beats-list" id="beats-list"></div>
-      <div class="feedback-row" id="str-feedback-row">
-        <textarea class="feedback-inp" id="str-feedback" placeholder="어떻게 수정할까요? (예: 비트 2를 더 짧게, 마무리에 구체적인 행동 추가)"></textarea>
+    <div class="gate-layout">
+      <div class="gate-content">
+        <div class="gate-header-block">
+          <div class="gate-title">영상 구성을 승인해주세요</div>
+          <div class="gate-sub">AI가 설계한 영상 흐름입니다. 내용·순서·길이를 확인하고 승인해주세요.
+            <span class="gate-sub-warn">— 승인 후 대본·음성·영상이 자동 제작됩니다</span>
+          </div>
+        </div>
+        <div class="total-row" id="str-totals"></div>
+        <div class="beats-list" id="beats-list"></div>
       </div>
-      <div class="gate-actions">
-        <button class="btn-approve" onclick="App.approve('structure')">✅ &nbsp; 승인 — 대본·음성·영상 자동 제작 시작</button>
-        <button class="btn-reject" onclick="App.showReject('structure')">✏️ 수정 요청</button>
+      <div class="gate-panel">
+        <div class="gate-panel-title">구성 승인</div>
+        <div class="gate-panel-desc">승인하면 이후 대본·음성·영상이 자동으로 제작됩니다.</div>
+        <div class="feedback-row" id="str-feedback-row">
+          <textarea class="feedback-inp" id="str-feedback" placeholder="수정 요청 내용 (예: 비트 2를 더 짧게)"></textarea>
+          <button class="btn-send-feedback" onclick="App.reject('structure')">↩ 수정 전송</button>
+        </div>
+        <div class="gate-panel-spacer"></div>
+        <div class="gate-actions">
+          <button class="btn-approve" onclick="App.approve('structure')">✅ 승인</button>
+        </div>
+        <button class="btn-reject" style="width:100%" onclick="App.showReject('structure')">✏️ 수정 요청</button>
       </div>
     </div>
   </div>
@@ -103,22 +224,51 @@
   <!-- ⑤ 대본 확인 -->
   <div class="page" id="p-gate-script">
     <div class="topbar">
-      <span class="tb-logo">🎬 영상 자동제작</span><span class="tb-sep"></span>
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
       <span class="tb-topic" id="scr-topic"></span>
-      <div class="tb-right"><span class="badge badge-wait">⏸ 확인 필요</span></div>
+      <div class="tb-right">
+        <span class="badge badge-wait">⏸ 확인 필요</span>
+      </div>
     </div>
     <div id="scr-stepbar" class="stepbar"></div>
-    <div class="gate-body">
-      <div class="gate-title">대본을 확인해주세요</div>
-      <div class="gate-sub">AI가 구성에 맞게 작성한 내레이션 대본입니다. 어색한 표현이 있으면 수정 요청하세요.</div>
-      <div class="script-meta" id="script-meta"></div>
-      <div class="script-box" id="script-lines"></div>
-      <div class="feedback-row" id="scr-feedback-row">
-        <textarea class="feedback-inp" id="scr-feedback" placeholder="어떻게 수정할까요? (예: 3번 줄 표현이 어색해요, 더 직접적으로 써주세요)"></textarea>
+    <div class="gate-layout">
+      <div class="gate-content">
+        <div class="gate-header-block">
+          <div class="gate-title">대본을 확인해주세요</div>
+          <div class="gate-sub">AI가 구성에 맞게 작성한 내레이션 대본입니다.</div>
+        </div>
+        <div class="script-meta" id="script-meta"></div>
+        <div class="script-player-row">
+          <button class="script-play-btn" id="script-play-btn" onclick="App.toggleScriptPlay()">▶ 미리 듣기</button>
+          <span class="script-play-status" id="script-play-status"></span>
+        </div>
+        <div class="script-box" id="script-lines"></div>
       </div>
-      <div class="gate-actions">
-        <button class="btn-approve" onclick="App.approve('script')">✅ &nbsp; 확인 완료 — 음성 변환 시작</button>
-        <button class="btn-reject" onclick="App.showReject('script')">✏️ 수정 요청</button>
+      <div class="gate-panel">
+        <div class="gate-panel-title">대본 검토</div>
+
+        <!-- AI 재생성 -->
+        <div class="gate-panel-section">
+          <div class="gate-section-label">AI 재생성</div>
+          <div class="model-btns">
+            <button class="model-btn sel" data-group="script" data-val="claude" onclick="App.selectModel(this)">Claude</button>
+            <button class="model-btn" data-group="script" data-val="gpt4o" onclick="App.selectModel(this)">GPT-4o</button>
+            <button class="model-btn" data-group="script" data-val="gemini" onclick="App.selectModel(this)">Gemini</button>
+          </div>
+          <textarea class="feedback-inp feedback-compact" id="scr-feedback"
+            placeholder="추가 지시 (선택사항) — 예: 더 짧게, 마지막 비트를 더 강조"></textarea>
+          <button class="btn-regen" onclick="App.reject('script')">↺ 재생성</button>
+        </div>
+
+        <!-- 직접 편집 -->
+        <div class="gate-panel-section gate-section-last">
+          <div class="gate-section-label">직접 편집</div>
+          <button class="btn-paste-open" onclick="App.toggleScriptPaste()">✍️ 붙여넣기 / 파일 업로드</button>
+        </div>
+
+        <div class="gate-panel-spacer"></div>
+        <button class="btn-approve" onclick="App.approve('script')">✅ 확인 완료 — 음성 생성</button>
       </div>
     </div>
   </div>
@@ -126,15 +276,18 @@
   <!-- ⑥ 음성 확인 -->
   <div class="page" id="p-gate-voice">
     <div class="topbar">
-      <span class="tb-logo">🎬 영상 자동제작</span><span class="tb-sep"></span>
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
       <span class="tb-topic" id="voi-topic"></span>
       <div class="tb-right"><span class="badge badge-wait">⏸ 청취 후 승인</span></div>
     </div>
     <div id="voi-stepbar" class="stepbar"></div>
-    <div class="gate-body" style="align-items:center;justify-content:center">
-      <div class="gate-title" style="text-align:center;width:100%;max-width:600px">음성을 들어보세요</div>
-      <div class="gate-sub" style="text-align:center;width:100%;max-width:600px">ElevenLabs가 생성한 내레이션입니다. 발음·억양이 어색하면 재녹음하세요.</div>
-      <div class="audio-card" style="max-width:600px">
+    <div class="gate-body" style="align-items:center">
+      <div class="gate-header-block" style="max-width:560px;width:100%;text-align:center">
+        <div class="gate-title" style="text-align:center">음성을 들어보세요</div>
+        <div class="gate-sub" style="text-align:center">ElevenLabs가 생성한 내레이션입니다. 발음·억양이 어색하면 재녹음하세요.</div>
+      </div>
+      <div class="audio-card">
         <div class="audio-title" id="audio-title">audio.mp3</div>
         <div class="audio-meta" id="audio-meta"></div>
         <div class="waveform" id="waveform"></div>
@@ -144,13 +297,38 @@
         </div>
         <audio id="audio-el" style="display:none"></audio>
       </div>
-      <div class="stt-card" style="max-width:600px">
+      <div class="stt-card">
         <div class="stt-title">자동 검증 결과</div>
         <div id="stt-results"></div>
       </div>
-      <div class="gate-actions" style="width:100%;max-width:600px">
+      <div class="gate-actions" style="max-width:560px;width:100%">
         <button class="btn-approve" onclick="App.approve('voice')">✅ &nbsp; 확인 완료 — 비주얼·렌더 자동 시작</button>
-        <button class="btn-reject" onclick="App.reject('voice')">🔄 재녹음 요청</button>
+        <button class="btn-reject" onclick="App.reject('voice')">🔄 재녹음</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑤-1 대본+B롤 확인 게이트 (step 5) -->
+  <div class="page" id="p-gate-dashboard">
+    <div class="topbar">
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
+      <span class="tb-topic" id="dbrd-topic"></span>
+      <div class="tb-right"><span class="badge badge-wait">⏸ 확인 필요</span></div>
+    </div>
+    <div id="dbrd-stepbar" class="stepbar"></div>
+    <div class="gate-layout">
+      <div class="gate-content gate-vrew" id="dbrd-vrew-body">
+        <div class="vrew-loading">데이터를 불러오는 중...</div>
+      </div>
+      <div class="gate-panel">
+        <div class="gate-panel-title">대본+B롤 검토</div>
+        <div class="gate-panel-desc">각 비트의 내레이션과 B롤 계획을 확인하세요. 승인하면 이미지·영상 생성이 시작됩니다.</div>
+        <div class="gate-panel-spacer"></div>
+        <div class="gate-actions">
+          <button class="btn-approve" onclick="App.approve('dashboard')">✅ 확인 완료 — 비주얼 생성 시작</button>
+        </div>
+        <button class="btn-reject" style="width:100%;margin-top:8px" onclick="App.backTo('voice')">← 음성으로 돌아가기</button>
       </div>
     </div>
   </div>
@@ -158,67 +336,84 @@
   <!-- ⑦ 자동 진행 중 (비주얼+렌더+M1) -->
   <div class="page" id="p-auto">
     <div class="topbar">
-      <span class="tb-logo">🎬 영상 자동제작</span><span class="tb-sep"></span>
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
       <span class="tb-topic" id="auto-topic"></span>
-      <div class="tb-right"><span class="badge badge-run">⟳ 자동 제작 중</span></div>
+      <div class="tb-right">
+        <button class="btn-dash" onclick="App.openDashboard()">📊 대본+B롤</button>
+        <span class="badge badge-run">⟳ 자동 제작 중</span>
+      </div>
     </div>
     <div id="auto-stepbar" class="stepbar"></div>
-    <div class="run-body">
-      <div class="run-spinner"></div>
-      <div class="run-title">이 단계는 자동으로 진행됩니다</div>
-      <div class="auto-stages" id="auto-stages">
-        <div class="auto-stage" id="auto-visual">
-          <div class="auto-icon">🖼️</div>
-          <div class="auto-name">비주얼 생성</div>
-          <div class="auto-sub" id="auto-visual-sub">대기 중...</div>
-        </div>
-        <div class="auto-stage" id="auto-render">
-          <div class="auto-icon">🎬</div>
-          <div class="auto-name">렌더링</div>
-          <div class="auto-sub" id="auto-render-sub">대기 중...</div>
-        </div>
-        <div class="auto-stage" id="auto-m1">
-          <div class="auto-icon">✅</div>
-          <div class="auto-name">최종 검사</div>
-          <div class="auto-sub" id="auto-m1-sub">대기 중...</div>
+    <div class="auto-pipeline-bar">
+      <div class="pipe-stage" id="auto-visual">
+        <div class="pipe-icon">🖼️</div>
+        <div class="pipe-info">
+          <div class="pipe-name">비주얼 생성</div>
+          <div class="pipe-sub" id="auto-visual-sub">대기 중</div>
         </div>
       </div>
-      <div class="log-stream">
-        <div class="log-head"><div class="log-dot"></div>실시간 로그</div>
+      <div class="pipe-sep">›</div>
+      <div class="pipe-stage" id="auto-render">
+        <div class="pipe-icon">🎬</div>
+        <div class="pipe-info">
+          <div class="pipe-name">렌더링</div>
+          <div class="pipe-sub" id="auto-render-sub">대기 중</div>
+          <div class="pipe-prog" id="auto-render-progress-wrap" style="display:none">
+            <div class="progress-track"><div class="progress-fill" id="auto-render-fill"></div></div>
+            <span class="progress-pct" id="auto-render-pct">0%</span>
+          </div>
+        </div>
+      </div>
+      <div class="pipe-sep">›</div>
+      <div class="pipe-stage" id="auto-m1">
+        <div class="pipe-icon">✅</div>
+        <div class="pipe-info">
+          <div class="pipe-name">최종 검사</div>
+          <div class="pipe-sub" id="auto-m1-sub">대기 중</div>
+        </div>
+      </div>
+      <div class="pipe-log-area">
         <div class="log-lines" id="auto-log-lines"></div>
       </div>
+    </div>
+    <div class="vrew-wrap" id="auto-dash-body">
+      <div class="vrew-loading">비주얼 생성이 시작되면 대본과 B롤이 표시됩니다</div>
     </div>
   </div>
 
   <!-- ⑧ 최종 승인 -->
   <div class="page" id="p-gate-final">
     <div class="topbar">
-      <span class="tb-logo">🎬 영상 자동제작</span><span class="tb-sep"></span>
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
       <span class="tb-topic" id="fin-topic"></span>
       <div class="tb-right"><span class="badge badge-wait">⏸ 최종 승인 필요</span></div>
     </div>
     <div id="fin-stepbar" class="stepbar"></div>
     <div class="final-body">
-      <div class="gate-title" style="text-align:center">완성 영상을 확인해주세요</div>
-      <div class="gate-sub" style="text-align:center">M1 최종 검사를 통과했습니다. 영상을 재생해보고 최종 승인해주세요.</div>
+      <div class="gate-header-block" style="text-align:center;align-items:center">
+        <div class="gate-title">완성 영상을 확인해주세요</div>
+        <div class="gate-sub">M1 최종 검사를 통과했습니다. 영상을 재생해보고 최종 승인해주세요.</div>
+      </div>
       <div class="video-wrap">
         <div class="video-thumb">
           <button class="video-play-big" onclick="App.openVideo()">▶</button>
-          <div style="font-size:11px;color:#475569" id="fin-filename">video.mp4</div>
+          <div style="font-size:11px;color:var(--t3)" id="fin-filename">video.mp4</div>
         </div>
         <div class="video-info">
           <div class="video-title" id="fin-title">—</div>
           <div class="video-meta" id="fin-meta"></div>
           <div class="m1-badge">✓ M1 최종 검사 통과</div>
           <div class="check-list">
-            <div class="check-item"><span style="color:#4ade80">✓</span> 주제 이행 확인됨</div>
-            <div class="check-item"><span style="color:#4ade80">✓</span> 페르소나 일관성 확인됨</div>
-            <div class="check-item"><span style="color:#4ade80">✓</span> 화면 수치 ↔ 출처 일치</div>
-            <div class="check-item"><span style="color:#4ade80">✓</span> CANON 금기 위반 없음</div>
+            <div class="check-item"><span style="color:var(--gr)">✓</span> 주제 이행 확인됨</div>
+            <div class="check-item"><span style="color:var(--gr)">✓</span> 페르소나 일관성 확인됨</div>
+            <div class="check-item"><span style="color:var(--gr)">✓</span> 화면 수치 ↔ 출처 일치</div>
+            <div class="check-item"><span style="color:var(--gr)">✓</span> CANON 금기 위반 없음</div>
           </div>
         </div>
       </div>
-      <div class="gate-actions" style="width:100%;max-width:580px">
+      <div class="gate-actions" style="width:100%;max-width:560px">
         <button class="btn-approve" onclick="App.approve('final')">🎉 &nbsp; 최종 승인 — 완료</button>
         <button class="btn-reject" onclick="App.reject('final')">✏️ 수정 요청</button>
       </div>
@@ -242,7 +437,59 @@
     </div>
   </div>
 
+  <!-- ⑩ 에피소드 뷰어 -->
+  <div class="page" id="p-viewer">
+    <div class="topbar">
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
+      <span class="tb-topic">에피소드 기록</span>
+      <div class="tb-right">
+        <button class="btn-tb-back" onclick="showPage('p-start')">← 홈</button>
+      </div>
+    </div>
+    <div class="viewer-layout">
+      <div class="viewer-sidebar">
+        <div class="viewer-sidebar-head">에피소드 목록</div>
+        <div class="ep-list" id="ep-list">
+          <div class="ep-empty">불러오는 중...</div>
+        </div>
+      </div>
+      <div class="viewer-main" id="viewer-main">
+        <div class="viewer-placeholder">← 왼쪽에서 에피소드를 선택하세요</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ⑪ 대본+B롤 대시보드 -->
+  <div class="page" id="p-dashboard">
+    <div class="topbar">
+      <div class="tb-logo"><span class="tb-logo-icon"></span>VideoAI</div>
+      <span class="tb-sep"></span>
+      <span class="tb-topic" id="dash-topic">대본 + B롤 대시보드</span>
+      <div class="tb-right">
+        <button class="btn-tb-back" onclick="App.closeDashboard()">← 돌아가기</button>
+      </div>
+    </div>
+    <div class="vrew-wrap" id="dash-body">
+      <div class="vrew-loading">데이터를 불러오는 중...</div>
+    </div>
+  </div>
+
 </div><!-- /pages -->
+
+<!-- 단계 오버레이 -->
+<div class="stage-ov" id="stage-overlay" style="display:none">
+  <div class="stage-ov-card">
+    <div class="stage-ov-head">
+      <div class="stage-ov-title" id="ov-title">단계 데이터</div>
+      <button class="stage-ov-close" onclick="closeStageOverlay()">✕</button>
+    </div>
+    <div class="stage-ov-body" id="ov-body"></div>
+    <div class="stage-ov-footer">
+      <button class="btn-approve" id="ov-save-btn" onclick="saveStageEdit()" style="display:none;padding:10px 22px;font-size:13px;max-width:160px">💾 &nbsp; 저장</button>
+    </div>
+  </div>
+</div>
 
 <!-- 에스컬레이션 오버레이 -->
 <div class="overlay" id="esc-overlay">
@@ -252,7 +499,31 @@
     <div class="esc-sub">자동으로 해결하지 못했습니다. 아래 이유를 확인해주세요.</div>
     <div class="esc-reasons" id="esc-reasons"></div>
     <div class="esc-btns">
+      <button class="btn-retry" onclick="App.retryStage()">↺ 이 단계부터 재시도</button>
       <button class="btn-dismiss" onclick="App.dismissEscalation()">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 대본 직접 입력 모달 ── -->
+<div class="paste-modal-overlay" id="script-paste-modal">
+  <div class="paste-modal">
+    <div class="paste-modal-header">
+      <div class="paste-modal-title">✍️ 대본 직접 입력</div>
+      <button class="paste-modal-close" onclick="App.toggleScriptPaste()">✕</button>
+    </div>
+    <div class="paste-modal-hint">한 줄 = TTS 한 호흡 단위. 빈 줄은 자동으로 제거됩니다. &nbsp;·&nbsp; <kbd>Ctrl+Enter</kbd> 대체 &nbsp;·&nbsp; <kbd>Esc</kbd> 닫기</div>
+    <div class="paste-file-row">
+      <input type="file" id="script-upload-input" accept=".txt" style="display:none" onchange="App.handleScriptUpload(event)">
+      <button class="btn-upload-file" onclick="document.getElementById('script-upload-input').click()">📄 .txt 파일 업로드</button>
+      <span class="paste-stats" id="paste-line-count">입력 대기</span>
+    </div>
+    <textarea class="paste-area" id="script-paste-area"
+      placeholder="여기에 대본을 붙여넣거나 직접 입력하세요&#10;&#10;예시)&#10;지금 이 순간, 여러분의 통장을 갉아먹는 것이 있습니다.&#10;바로 '모르는 것'에 내는 세금입니다.&#10;오늘 단 3분으로 그 비용을 없애드리겠습니다."
+      oninput="App._updatePasteCount()"></textarea>
+    <div class="paste-modal-footer">
+      <button class="btn-paste-cancel" onclick="App.toggleScriptPaste()">취소</button>
+      <button class="btn-paste-use" onclick="App.useCustomScript()">이 대본으로 대체</button>
     </div>
   </div>
 </div>

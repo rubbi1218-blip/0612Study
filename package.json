@@ -22,9 +22,13 @@
     "assemblyai": "^4.0.0",
     "dotenv": "^16.0.0",
     "express": "^5.2.1",
+    "hyperframes": "^0.6.109",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "remotion": "^4.0.475",
     "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.0"
   }
 }

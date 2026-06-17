@@ -4,9 +4,11 @@
  * 사용법:
  *   node conductor.js "주제" "이번 편 의도" [--fresh] [--mock-voice] [--auto-approve]
  *
- * --fresh:        같은 주제의 이전 state를 무시하고 처음부터 시작
- * --mock-voice:   ElevenLabs 대신 FFmpeg 테스트 음원으로 대체 (API 없이 파이프라인 검증용)
- * --auto-approve: 모든 사람 게이트를 자동 승인 (통합 테스트용 — piped stdin EOF 우회)
+ * --fresh:              같은 주제의 이전 state를 무시하고 처음부터 시작
+ * --mock-voice:         ElevenLabs 대신 FFmpeg 테스트 음원으로 대체 (API 없이 파이프라인 검증용)
+ * --auto-approve:       모든 사람 게이트를 자동 승인 (통합 테스트용 — piped stdin EOF 우회)
+ * --renderer remotion|hyperframes  렌더 엔진 선택 (기본값: RENDER_ENGINE 환경변수 또는 remotion)
+ * --tts elevenlabs|qwen3            TTS 엔진 선택 (기본값: TTS_ENGINE 환경변수 또는 elevenlabs)
  */
 
 import path from "path";
@@ -133,6 +135,11 @@ async function mockVoiceProduce(input, _canon, _feedback, episodeDir) {
 
 // ── 파이프라인 정의 ─────────────────────────────────────────
 // produce / verify 시그니처를 stage마다 정규화한다.
+// main()이 실행되기 전에 PIPELINE이 정의되므로, CLI 플래그 값은
+// 모듈 레벨 변수에 보관하고 main()에서 할당한다.
+let _rendererOverride;
+let _ttsOverride;
+
 const PIPELINE = [
   {
     name: "research",
@@ -171,7 +178,7 @@ const PIPELINE = [
     name: "voice",
     inputFrom: "script",
     async produce(input, _canon, _feedback, episodeDir) {
-      return await runA4(input, episodeDir);
+      return await runA4(input, episodeDir, _ttsOverride);
     },
     async verify(payload) {
       return await runV4(payload);
@@ -197,7 +204,7 @@ const PIPELINE = [
       // render는 voice + structure + visual 세 스테이지 데이터가 모두 필요
       const voice     = state?.getPayload("voice")     ?? {};
       const structure = state?.getPayload("structure") ?? {};
-      return await runA6({ voice, structure, visual: input }, canon, feedback, episodeDir);
+      return await runA6({ voice, structure, visual: input }, canon, feedback, episodeDir, state, _rendererOverride, _onRenderProgress);
     },
     async verify(payload) {
       return await runV6(payload);
@@ -211,7 +218,18 @@ async function main() {
   const fresh        = args.includes("--fresh");
   const mockVoice    = args.includes("--mock-voice");
   const autoApprove  = args.includes("--auto-approve");
-  const filteredArgs = args.filter((a) => !a.startsWith("--"));
+  const rendererIdx  = args.indexOf("--renderer");
+  _rendererOverride  = rendererIdx !== -1 ? args[rendererIdx + 1] : undefined;
+  const ttsIdx       = args.indexOf("--tts");
+  _ttsOverride       = ttsIdx !== -1 ? args[ttsIdx + 1] : undefined;
+  const epIdx        = args.indexOf("--episode-id");
+  const episodeIdArg = epIdx !== -1 ? args[epIdx + 1] : undefined;
+  const filteredArgs = args.filter((a, i) =>
+    !a.startsWith("--") &&
+    args[i - 1] !== "--renderer" &&
+    args[i - 1] !== "--tts" &&
+    args[i - 1] !== "--episode-id"
+  );
   const topic        = filteredArgs[0];
   const intent       = filteredArgs[1] ?? "";
 
@@ -252,7 +270,9 @@ async function main() {
   console.log("=".repeat(60));
 
   const canon      = loadCanon();
-  const state      = StateManager.loadOrInit(topic, intent, fresh);
+  const state      = episodeIdArg
+    ? StateManager.loadById(episodeIdArg)
+    : StateManager.loadOrInit(topic, intent, fresh);
   const episodeDir = path.dirname(state.statePath);
 
   let stageIndex       = 0;
@@ -294,7 +314,13 @@ async function main() {
     let feedback     = [...humanRejFeedback];
     humanRejFeedback = [];
 
-    if (_wsMode) process.send({ type: "stage_start", stage: stage.name });
+    if (_wsMode) process.send({ type: "stage_start", stage: stage.name, episodeId: state.episodeId });
+
+    // 단계별 예상 소요 시간(ms) — 진행률 타이머 간격 계산용
+    const STAGE_EST_MS = {
+      research: 35_000, structure: 20_000, script: 25_000,
+      voice: 25_000, visual: 90_000, render: 120_000,
+    };
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       console.log(`\n[${stage.name}] 🔄 attempt ${attempt}/${MAX_RETRIES}`);
@@ -303,16 +329,37 @@ async function main() {
       if (!skipProduce) {
         state.markStageStart(stage.name);
         const input = state.getLastPayload(stage.inputFrom);
+
+        // 진행률 타이머: produce 실행 중 2초마다 추정 진행률 IPC 전송
+        let _progressPct = 0;
+        let _progressTimer = null;
+        if (_wsMode) {
+          const estMs = STAGE_EST_MS[stage.name] ?? 30_000;
+          _progressTimer = setInterval(() => {
+            _progressPct = Math.min(90, _progressPct + Math.round(2000 / estMs * 90));
+            process.send({ type: "progress", stage: stage.name, pct: _progressPct });
+          }, 2000);
+        }
+        // render 단계에 전달하는 실제 진행률 콜백 (Remotion onProgress용)
+        const _onRenderProgress = _wsMode
+          ? (pct) => process.send({ type: "progress", stage: stage.name, pct: Math.round(pct) })
+          : null;
+
         try {
-          const produced = await stage.produce(input, canon, feedback, episodeDir, state);
+          const produced = await stage.produce(input, canon, feedback, episodeDir, state, _onRenderProgress);
+          clearInterval(_progressTimer);
+          if (_wsMode) process.send({ type: "progress", stage: stage.name, pct: 100 });
           state.saveStageResult(stage.name, produced, produced.decision_log ?? "");
           console.log(`[${stage.name}] 📝 produce 완료. ${produced.decision_log ?? ""}`);
         } catch (err) {
+          clearInterval(_progressTimer);
           console.error(`[${stage.name}] ❌ produce 오류: ${err.message}`);
           feedback = [err.message];
           skipProduce = false;
           if (attempt < MAX_RETRIES) {
-            const delay = err.message.includes("503") ? 8000 : 2000;
+            const delay = err.message.includes("429") ? 65_000
+                      : err.message.includes("503") ? 60_000
+                      : 2_000;
             console.log(`[${stage.name}] ⏳ ${delay / 1000}초 후 재시도...`);
             await new Promise((r) => setTimeout(r, delay));
           }
