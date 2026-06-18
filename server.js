@@ -201,10 +201,13 @@ wss.on("connection", (ws) => {
       if (child) { child.kill(); child = null; }
 
       const args = [msg.topic, msg.intent ?? "", "--ws"];
-      if (msg.fresh)      args.push("--fresh");
-      if (msg.episodeId)  args.push("--episode-id", msg.episodeId);
-      if (msg.renderer)   args.push("--renderer", msg.renderer);
-      if (msg.tts)        args.push("--tts", msg.tts);
+      if (msg.fresh)       args.push("--fresh");
+      if (msg.episodeId)   args.push("--episode-id", msg.episodeId);
+      if (msg.renderer)    args.push("--renderer", msg.renderer);
+      if (msg.tts)         args.push("--tts", msg.tts);
+      if (msg.mockVoice)   args.push("--mock-voice");
+      if (msg.mockVisual)  args.push("--mock-visual");
+      if (msg.mockRender)  args.push("--mock-render");
 
       child = fork(join(__dirname, "conductor.js"), args, {
         silent: true,

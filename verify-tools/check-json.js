@@ -92,6 +92,8 @@ export function requireFreshDate(dateStr, maxAgeDays, label = "source_date") {
   if (typeof dateStr !== "string") {
     return [`"${label}" 날짜 형식 오류 (YYYY-MM-DD 필요): "${dateStr}"`];
   }
+  // AI가 날짜를 모를 때 "XX" 플레이스홀더를 씀 — 01로 정규화
+  dateStr = dateStr.replace(/-XX/g, "-01");
   // YYYY-MM 형식은 월 첫째 날로 자동 보정
   if (/^\d{4}-\d{2}$/.test(dateStr)) {
     dateStr = dateStr + "-01";
