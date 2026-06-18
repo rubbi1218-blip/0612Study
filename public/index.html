@@ -354,65 +354,68 @@
     </div>
     <div class="stepbar" id="ve-stepbar"></div>
 
-    <!-- 에디터 본문: 좌=미리보기, 우=타임라인 -->
-    <div class="ve-editor">
+    <!-- 에디터 본문 (CapCut 스타일: 상=워크스페이스, 하=타임라인) -->
+    <div class="ve2-editor">
 
-      <!-- 좌: 미리보기 플레이어 -->
-      <div class="ve-preview-pane">
-        <div class="ve-preview-screen" id="ve-preview-screen">
-          <div class="ve-preview-img-wrap" id="ve-preview-img-wrap">
-            <div class="ve-preview-placeholder">씬을 선택하거나<br>⚡ 이미지를 생성하세요</div>
-          </div>
-          <div class="ve-preview-top-bar" id="ve-preview-scene-label"></div>
-          <div class="ve-preview-script-bar" id="ve-preview-script"></div>
-        </div>
-        <div class="ve-player-bar">
-          <button class="ve-player-btn" onclick="App.vePrev()" title="이전 씬">◀</button>
-          <button class="ve-player-btn ve-play-main" id="ve-play-btn" onclick="App.veTogglePlay()">▶ 재생</button>
-          <button class="ve-player-btn" onclick="App.veNext()" title="다음 씬">▶</button>
-          <span class="ve-player-time" id="ve-player-time">씬 — / —</span>
-        </div>
-      </div>
+      <!-- 상단: 미리보기 + 속성 패널 -->
+      <div class="ve2-workspace">
 
-      <!-- 우: 타임라인 + 편집 패널 -->
-      <div class="ve-timeline-pane">
-
-        <!-- 도구 헤더: 모델 선택 + 전체 생성 -->
-        <div class="ve-tools-header">
-          <div class="ve-tools-left">
-            <span class="ve-field-label">이미지 모델</span>
-            <div class="model-btns">
-              <button class="model-btn sel" data-group="ve-imgmodel" data-val="gemini" onclick="App.selectModel(this)">Gemini Imagen</button>
-              <button class="model-btn" data-group="ve-imgmodel" data-val="chatgpt" onclick="App.selectModel(this)">ChatGPT</button>
-              <button class="model-btn" data-group="ve-imgmodel" data-val="veo" onclick="App.selectModel(this)">Veo 2</button>
+        <!-- 미리보기 영역 -->
+        <div class="ve2-preview-area">
+          <div class="ve2-screen" id="ve2-screen">
+            <div class="ve2-img-wrap" id="ve2-img-wrap">
+              <div class="ve2-placeholder">씬을 선택하거나<br>⚡ 이미지를 생성하세요</div>
             </div>
+            <div class="ve2-scene-label" id="ve2-scene-label"></div>
+            <div class="ve2-subtitle" id="ve2-subtitle" data-pos="bottom"></div>
           </div>
-          <button class="btn-gen-all" onclick="App.generateAllBeats()">⚡ 전체 생성</button>
+          <div class="ve2-playbar">
+            <button class="ve2-pbtn" onclick="App.vePrev()" title="이전 씬">⏮</button>
+            <button class="ve2-pbtn ve2-play-main" id="ve-play-btn" onclick="App.veTogglePlay()">▶</button>
+            <button class="ve2-pbtn" onclick="App.veNext()" title="다음 씬">⏭</button>
+            <span class="ve2-ptime" id="ve-player-time">씬 — / —</span>
+            <span class="ve2-ptime ve2-total-time" id="ve2-total-time"></span>
+          </div>
         </div>
 
-        <!-- 타임라인 씬 리스트 -->
-        <div class="ve-timeline" id="ve-timeline"></div>
-
-        <!-- 선택된 씬 수동 편집 패널 -->
-        <div class="ve-edit-panel" id="ve-edit-panel" style="display:none">
-          <div class="ve-edit-header">
-            <span class="ve-edit-title" id="ve-edit-title">씬 편집</span>
-            <button class="ve-edit-close" onclick="App.veEditClose()">✕</button>
+        <!-- 속성 패널 -->
+        <div class="ve2-props">
+          <div class="ve2-tabs" id="ve2-tabs">
+            <button class="ve2-tab sel" data-tab="image" onclick="App.veSwitchTab(this)">🖼 이미지</button>
+            <button class="ve2-tab" data-tab="text"  onclick="App.veSwitchTab(this)">✏️ 텍스트</button>
+            <button class="ve2-tab" data-tab="trans" onclick="App.veSwitchTab(this)">✨ 전환</button>
+            <button class="ve2-tab" data-tab="scene" onclick="App.veSwitchTab(this)">✂️ 씬</button>
           </div>
-          <div class="ve-edit-label">내레이션 대본</div>
-          <textarea class="ve-edit-ta" id="ve-edit-script-ta" rows="3" placeholder="내레이션 텍스트 (줄바꿈 = 호흡 분리)"></textarea>
-          <div class="ve-edit-sec-row">
-            <span class="ve-edit-sec-label">⏱ 노출 시간</span>
-            <input class="ve-edit-sec-inp" id="ve-edit-sec-inp" type="number" min="1" max="60" value="5">
-            <span class="ve-edit-sec-unit">초</span>
-          </div>
-          <div class="ve-edit-actions">
-            <button class="vrew-act-btn vrew-act-save" onclick="App.veEditSave()">💾 저장</button>
-            <button class="vrew-act-btn vrew-act-regen" onclick="App.veRegenCurrent()">↺ 이미지 재생성</button>
-          </div>
+          <div class="ve2-props-body" id="ve2-props-body"></div>
         </div>
 
       </div>
+
+      <!-- 하단: 타임라인 -->
+      <div class="ve2-tl-area">
+        <div class="ve2-tl-controls">
+          <button class="ve2-tl-cbtn" onclick="App.vePrev()" title="이전">⏮</button>
+          <button class="ve2-tl-cbtn ve2-tl-play" id="ve2-tl-play" onclick="App.veTogglePlay()">▶</button>
+          <button class="ve2-tl-cbtn" onclick="App.veNext()" title="다음">⏭</button>
+          <span class="ve2-tl-tc" id="ve2-tl-tc">00:00</span>
+          <div style="flex:1"></div>
+          <span class="ve2-tl-lbl">줌</span>
+          <button class="ve2-tl-cbtn" onclick="App.veTlZoom(-1)">−</button>
+          <button class="ve2-tl-cbtn" onclick="App.veTlZoom(1)">+</button>
+        </div>
+        <div class="ve2-tl-scroll" id="ve2-tl-scroll">
+          <div class="ve2-tl-inner" id="ve2-tl-inner">
+            <div class="ve2-tl-ruler" id="ve2-tl-ruler"></div>
+            <div class="ve2-tl-track" id="ve2-tl-track"></div>
+            <div class="ve2-tl-audio">
+              <span class="ve2-tl-audio-lbl">♪</span>
+              <div class="ve2-tl-audio-wave" id="ve2-tl-audio-wave"></div>
+            </div>
+            <div class="ve2-playhead" id="ve2-playhead"></div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- 하단 고정 바 -->

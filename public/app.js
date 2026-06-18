@@ -437,25 +437,27 @@ function renderFinal(payload) {
 // ── 편집 비주얼 ──────────────────────────────────────
 
 const VE = {
-  assets: {},        // { beatId: { status:"none"|"gen"|"ok"|"err", asset, model } }
-  beats: [],         // structure payload의 beats
-  lines: [],         // script payload의 lines
-  claims: [],        // research payload의 claims
+  assets: {},
+  beats: [], lines: [], claims: [],
   generating: new Set(),
-  currentBeat: 0,    // 현재 선택/미리보기 중인 beat 인덱스
-  playTimer: null,   // setTimeout ID (재생 타이머)
-  playing: false,
-  editingBeat: -1,   // 편집 패널에 열린 beat 인덱스
+  currentBeat: 0,
+  playTimer: null, playing: false,
+  editingBeat: -1,
+  zoom: 24,                                              // px/초
+  propTab: "image",                                      // 속성 패널 탭
+  subtitleStyle: { position: "bottom", fontSize: "md", color: "#ffffff" },
+  _dragFrom: null,                                       // 드래그 출발 인덱스
 };
 
 function renderVisualEdit(visualPayload) {
-  VE.beats  = State.gatePayloads.structure?.beats ?? [];
-  VE.lines  = State.gatePayloads.script?.lines   ?? [];
-  VE.claims = State.gatePayloads.research?.claims ?? [];
-  VE.assets = {};
-  VE.currentBeat  = 0;
-  VE.playing      = false;
-  VE.editingBeat  = -1;
+  VE.beats      = State.gatePayloads.structure?.beats ?? [];
+  VE.lines      = State.gatePayloads.script?.lines   ?? [];
+  VE.claims     = State.gatePayloads.research?.claims ?? [];
+  VE.assets     = {};
+  VE.currentBeat = 0;
+  VE.playing     = false;
+  VE.editingBeat = -1;
+  VE.propTab     = "image";
   clearTimeout(VE.playTimer);
 
   for (const a of (visualPayload?.assets ?? [])) {
@@ -464,124 +466,341 @@ function renderVisualEdit(visualPayload) {
 
   _veRenderTimeline();
   _veShowBeat(0);
+  _veRenderProps();
   _veUpdateProgress();
 }
 
+// ── 타임라인 렌더 (가로 블록) ────────────────────────────
 function _veRenderTimeline() {
-  const tl = document.getElementById("ve-timeline");
-  if (!tl) return;
-  const numBeats = Math.max(VE.beats.length, 1);
-  const perBeat  = Math.ceil(VE.lines.length / numBeats);
+  const track = document.getElementById("ve2-tl-track");
+  if (!track) return;
+  const pxS = VE.zoom;
+  let html = "", xPos = 0;
 
-  tl.innerHTML = VE.beats.map((beat, bi) => {
-    const beatLines = VE.lines.slice(bi * perBeat, (bi + 1) * perBeat);
-    const raw       = beatLines[0] ?? "";
-    const snippet   = escHtml(raw.slice(0, 40) + (raw.length > 40 ? "…" : "")) || "—";
-    const sec       = beat.estimated_sec ?? beat.duration_seconds ?? "?";
-    const label     = escHtml(beat.purpose ?? `씬 ${bi + 1}`);
-    const isActive  = bi === VE.currentBeat;
+  VE.beats.forEach((beat, bi) => {
+    const sec  = beat.estimated_sec ?? beat.duration_seconds ?? 5;
+    const w    = Math.max(64, Math.round(sec * pxS));
+    const isActive = bi === VE.currentBeat;
+    const entry = VE.assets[beat.id];
+    let stCls = entry?.status === "ok" ? " ve2-blk-done" : entry?.status === "gen" ? " ve2-blk-gen" : "";
 
-    return `<div class="ve-tl-card${isActive ? " ve-tl-active" : ""}" id="ve-tl-${bi}" onclick="App.veSelectBeat(${bi})">
-      <div class="ve-tl-num">${bi + 1}</div>
-      <div class="ve-tl-thumb" id="ve-tl-thumb-${bi}">${_veTlThumbHtml(beat.id)}</div>
-      <div class="ve-tl-info">
-        <div class="ve-tl-label">${label}</div>
-        <div class="ve-tl-script">${snippet}</div>
-        <div class="ve-tl-meta">⏱ ${sec}초</div>
+    let thumbHtml = `<span class="ve2-blk-ph">🖼</span>`;
+    if (entry?.status === "ok" && entry.asset?.type === "chart") {
+      thumbHtml = `<span class="ve2-blk-ph">📊</span>`;
+    } else if (entry?.status === "ok" && entry.asset?.file_path) {
+      const rel = entry.asset.file_path.replace(/\\/g, "/").split("/output/").pop();
+      thumbHtml = `<img src="/output/${rel}" alt="" draggable="false">`;
+    } else if (entry?.status === "gen") {
+      thumbHtml = `<div class="ve-gen-spinner"></div>`;
+    }
+
+    const trans = beat.transition ?? "cut";
+    const tIcon = { cut: "|", fade: "≈", "slide-left": "◀", "slide-up": "▲" }[trans] ?? "|";
+
+    html += `<div class="ve2-blk${isActive ? " ve2-blk-active" : ""}${stCls}"
+      id="ve2-blk-${bi}" style="width:${w}px;left:${xPos}px"
+      onclick="App.veSelectBeat(${bi})"
+      draggable="true"
+      ondragstart="App._veDragStart(event,${bi})"
+      ondragover="App._veDragOver(event,${bi})"
+      ondrop="App._veDrop(event,${bi})"
+      ondragleave="App._veDragLeave(event,${bi})">
+      <div class="ve2-blk-tl" data-bi="${bi}" data-side="l"></div>
+      <div class="ve2-blk-inner">
+        <div class="ve2-blk-thumb">${thumbHtml}</div>
+        <div class="ve2-blk-info">
+          <div class="ve2-blk-label">${escHtml((beat.purpose ?? `씬${bi+1}`).slice(0,16))}</div>
+          <div class="ve2-blk-dur">${sec}s</div>
+        </div>
       </div>
-      <div class="ve-tl-btns">
-        <button class="ve-tl-btn" title="생성/재생성" onclick="event.stopPropagation();App.generateBeat(${beat.id})">⚡</button>
-        <button class="ve-tl-btn" title="편집" onclick="event.stopPropagation();App.veEditBeat(${bi})">✏️</button>
-      </div>
-    </div>`;
-  }).join("");
+      <div class="ve2-blk-tr" data-bi="${bi}" data-side="r"></div>
+    </div>
+    ${bi < VE.beats.length - 1
+      ? `<div class="ve2-trans-pill" style="left:${xPos+w}px"
+           onclick="event.stopPropagation();App.veSelectBeat(${bi});App.veSwitchTabName('trans')"
+           title="전환 효과">${tIcon}</div>`
+      : ""}`;
+    xPos += w;
+  });
+
+  track.innerHTML = html;
+  track.style.minWidth = `${xPos + 80}px`;
+  _veRenderRuler(xPos + 80);
+  _veRenderAudioWave(xPos + 80);
+  _veUpdatePlayhead();
+  _veAttachTrimListeners();
 }
 
-function _veTlThumbHtml(beatId) {
-  const entry = VE.assets[beatId];
-  if (!entry)                        return `<div class="ve-tl-thumb-ph">🖼</div>`;
-  if (entry.status === "gen")        return `<div class="ve-tl-thumb-spin"></div>`;
-  if (entry.asset?.type === "chart") return `<div class="ve-tl-thumb-ph">📊</div>`;
-  if (entry.asset?.file_path) {
-    const raw = entry.asset.file_path.replace(/\\/g, "/");
-    const rel = raw.includes("/output/") ? raw.split("/output/").pop() : raw;
-    return `<img src="/output/${rel}" alt="" style="width:100%;height:100%;object-fit:cover;display:block">`;
+function _veRenderRuler(totalW) {
+  const ruler = document.getElementById("ve2-tl-ruler");
+  if (!ruler) return;
+  ruler.style.minWidth = `${totalW}px`;
+  const totalSec = Math.ceil(totalW / VE.zoom);
+  const step = VE.zoom < 10 ? 5 : VE.zoom < 18 ? 2 : 1;
+  let html = "";
+  for (let s = 0; s <= totalSec; s += step) {
+    const m = String(Math.floor(s / 60)).padStart(2, "0");
+    const ss = String(s % 60).padStart(2, "0");
+    html += `<div class="ve2-ruler-tick" style="left:${s * VE.zoom}px">${m}:${ss}</div>`;
   }
-  return `<div class="ve-tl-thumb-ph">❌</div>`;
+  ruler.innerHTML = html;
 }
 
+function _veRenderAudioWave(totalW) {
+  const wave = document.getElementById("ve2-tl-audio-wave");
+  if (!wave) return;
+  wave.style.minWidth = `${totalW}px`;
+  const n = Math.floor(totalW / 4);
+  let html = "";
+  for (let i = 0; i < n; i++) {
+    const h = (4 + Math.abs(Math.sin(i * 0.4 + Math.cos(i * 0.13)) * 12)).toFixed(1);
+    html += `<div class="ve2-wave-bar" style="height:${h}px"></div>`;
+  }
+  wave.innerHTML = html;
+}
+
+function _veUpdatePlayhead() {
+  const ph = document.getElementById("ve2-playhead");
+  if (!ph) return;
+  let x = 0;
+  for (let i = 0; i < VE.currentBeat && i < VE.beats.length; i++) {
+    x += (VE.beats[i].estimated_sec ?? VE.beats[i].duration_seconds ?? 5) * VE.zoom;
+  }
+  ph.style.left = `${x}px`;
+  const tc = document.getElementById("ve2-tl-tc");
+  if (tc) {
+    const totSec = Math.round(x / VE.zoom);
+    tc.textContent = `${String(Math.floor(totSec/60)).padStart(2,"0")}:${String(totSec%60).padStart(2,"0")}`;
+  }
+}
+
+function _veAttachTrimListeners() {
+  document.querySelectorAll(".ve2-blk-tl, .ve2-blk-tr").forEach(h => {
+    h.addEventListener("mousedown", e => {
+      e.stopPropagation(); e.preventDefault();
+      const bi   = parseInt(h.dataset.bi);
+      const side = h.dataset.side;
+      const startX   = e.clientX;
+      const startSec = VE.beats[bi]?.estimated_sec ?? VE.beats[bi]?.duration_seconds ?? 5;
+      const onMove = ev => {
+        const dx = ev.clientX - startX;
+        let ns = side === "r" ? startSec + dx / VE.zoom : startSec - dx / VE.zoom;
+        ns = Math.max(1, Math.min(60, Math.round(ns * 2) / 2));
+        if (VE.beats[bi]) { VE.beats[bi].estimated_sec = ns; VE.beats[bi].duration_seconds = ns; }
+        _veRenderTimeline();
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        if (bi === VE.currentBeat) _veRenderProps();
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  });
+}
+
+// ── 미리보기 씬 표시 ─────────────────────────────────────
 function _veShowBeat(bi) {
   VE.currentBeat = bi;
   const beat = VE.beats[bi];
   if (!beat) return;
 
-  // 미리보기 이미지/상태
-  const wrap = document.getElementById("ve-preview-img-wrap");
+  const wrap = document.getElementById("ve2-img-wrap");
   if (wrap) {
     const entry = VE.assets[beat.id];
     const clrs  = ["#7c3aed","#0891b2","#059669","#d97706","#dc2626","#6366f1"];
     const c     = clrs[bi % clrs.length];
     if (entry?.status === "ok" && entry.asset?.type === "chart") {
-      wrap.innerHTML = `<div class="ve-preview-chart">📊<br><span style="font-size:12px;color:var(--t2)">${escHtml(entry.asset.chart_spec?.title ?? "차트")}</span></div>`;
+      wrap.innerHTML = `<div style="font-size:52px;text-align:center">📊<br><span style="font-size:13px;color:var(--t2)">${escHtml(entry.asset.chart_spec?.title ?? "차트")}</span></div>`;
     } else if (entry?.status === "ok" && entry.asset?.file_path) {
-      const raw = entry.asset.file_path.replace(/\\/g, "/");
-      const rel = raw.includes("/output/") ? raw.split("/output/").pop() : raw;
+      const rel = entry.asset.file_path.replace(/\\/g, "/").split("/output/").pop();
       wrap.innerHTML = `<img src="/output/${rel}" alt="" style="max-width:100%;max-height:100%;object-fit:contain">`;
     } else if (entry?.status === "gen") {
-      wrap.innerHTML = `<div class="ve-preview-placeholder"><div class="ve-gen-spinner"></div>생성 중...</div>`;
+      wrap.innerHTML = `<div class="ve2-placeholder"><div class="ve-gen-spinner" style="width:28px;height:28px;border-width:3px"></div><br>생성 중...</div>`;
     } else {
-      wrap.innerHTML = `<div class="ve-preview-placeholder" style="border:2px dashed ${c}44;border-radius:12px;padding:28px">
-        <div style="font-size:34px">🖼</div>
-        <div>⚡ 버튼으로 생성하세요</div>
-      </div>`;
+      wrap.innerHTML = `<div class="ve2-placeholder" style="border:2px dashed ${c}55;border-radius:14px;padding:32px 20px">
+        <div style="font-size:40px">🖼</div><div>⚡ 이미지를 생성하세요</div></div>`;
     }
   }
 
-  // 스크립트 오버레이
   const numBeats  = Math.max(VE.beats.length, 1);
   const perBeat   = Math.ceil(VE.lines.length / numBeats);
   const beatLines = VE.lines.slice(bi * perBeat, (bi + 1) * perBeat);
-  const scriptEl  = document.getElementById("ve-preview-script");
-  if (scriptEl) scriptEl.textContent = beatLines.join(" ");
 
-  // 씬 레이블
+  const subEl = document.getElementById("ve2-subtitle");
+  if (subEl) {
+    subEl.textContent = beatLines.join(" ");
+    subEl.dataset.pos = VE.subtitleStyle.position;
+    subEl.style.fontSize = { sm: "12px", md: "15px", lg: "19px" }[VE.subtitleStyle.fontSize] ?? "15px";
+    subEl.style.color    = VE.subtitleStyle.color;
+  }
+
   const sec = beat.estimated_sec ?? beat.duration_seconds ?? "?";
-  const labelEl = document.getElementById("ve-preview-scene-label");
+  const labelEl = document.getElementById("ve2-scene-label");
   if (labelEl) labelEl.textContent = `씬 ${bi + 1}  ·  ${beat.purpose ?? ""}  ·  ⏱ ${sec}초`;
 
-  // 플레이어 타이머 텍스트
   const timeEl = document.getElementById("ve-player-time");
   if (timeEl) timeEl.textContent = `씬 ${bi + 1} / ${VE.beats.length}`;
 
-  // 타임라인 활성 표시 갱신
-  document.querySelectorAll(".ve-tl-card").forEach((el, i) =>
-    el.classList.toggle("ve-tl-active", i === bi));
+  const totalEl = document.getElementById("ve2-total-time");
+  if (totalEl) {
+    const tot = VE.beats.reduce((s, b) => s + (b.estimated_sec ?? b.duration_seconds ?? 5), 0);
+    totalEl.textContent = `총 ${String(Math.floor(tot/60)).padStart(2,"0")}:${String(tot%60).padStart(2,"0")}`;
+  }
 
-  document.getElementById(`ve-tl-${bi}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  document.querySelectorAll(".ve2-blk").forEach((el, i) =>
+    el.classList.toggle("ve2-blk-active", i === bi));
+  _veUpdatePlayhead();
+  document.getElementById(`ve2-blk-${bi}`)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  _veRenderProps();
 }
 
 function _veRefreshCard(beatId) {
   const bi    = VE.beats.findIndex(b => b.id === beatId);
   const entry = VE.assets[beatId];
-
-  const tlCard  = document.getElementById(`ve-tl-${bi}`);
-  const tlThumb = document.getElementById(`ve-tl-thumb-${bi}`);
-  if (tlCard) {
-    tlCard.classList.toggle("ve-tl-gen",  entry?.status === "gen");
-    tlCard.classList.toggle("ve-tl-done", entry?.status === "ok");
+  const blk   = document.getElementById(`ve2-blk-${bi}`);
+  if (blk) {
+    blk.classList.toggle("ve2-blk-gen",  entry?.status === "gen");
+    blk.classList.toggle("ve2-blk-done", entry?.status === "ok");
+    const thumb = blk.querySelector(".ve2-blk-thumb");
+    if (thumb) {
+      if (entry?.status === "ok" && entry.asset?.type === "chart") {
+        thumb.innerHTML = `<span class="ve2-blk-ph">📊</span>`;
+      } else if (entry?.status === "ok" && entry.asset?.file_path) {
+        const rel = entry.asset.file_path.replace(/\\/g, "/").split("/output/").pop();
+        thumb.innerHTML = `<img src="/output/${rel}" alt="" draggable="false">`;
+      } else if (entry?.status === "gen") {
+        thumb.innerHTML = `<div class="ve-gen-spinner"></div>`;
+      } else {
+        thumb.innerHTML = `<span class="ve2-blk-ph">🖼</span>`;
+      }
+    }
   }
-  if (tlThumb) tlThumb.innerHTML = _veTlThumbHtml(beatId);
-
   if (bi === VE.currentBeat) _veShowBeat(bi);
-
   _veUpdateProgress();
 }
 
 function _veUpdateProgress() {
   const total = VE.beats.length;
   const done  = Object.values(VE.assets).filter(a => a.status === "ok").length;
-  const el = document.getElementById("ve-gen-progress");
+  const el    = document.getElementById("ve-gen-progress");
   if (el) el.textContent = total ? `${done} / ${total} 완료` : "";
+}
+
+// ── 속성 패널 렌더 ───────────────────────────────────────
+function _veRenderProps() {
+  const body = document.getElementById("ve2-props-body");
+  if (!body) return;
+  const bi   = VE.currentBeat;
+  const beat = VE.beats[bi];
+  if (!beat) { body.innerHTML = `<div class="ve2-prop-empty">씬을 선택하세요</div>`; return; }
+
+  const numBeats  = Math.max(VE.beats.length, 1);
+  const perBeat   = Math.ceil(VE.lines.length / numBeats);
+  const beatLines = VE.lines.slice(bi * perBeat, (bi + 1) * perBeat);
+  const sec       = beat.estimated_sec ?? beat.duration_seconds ?? 5;
+  const entry     = VE.assets[beat.id];
+  const tab       = VE.propTab;
+
+  if (tab === "image") {
+    const mdl = entry?.model ?? "gemini";
+    body.innerHTML = `
+      <div class="ve2-prop-sec">
+        <div class="ve2-prop-lbl">이미지 모델</div>
+        <div class="model-btns">
+          <button class="model-btn${mdl==="gemini"?" sel":""}" data-group="ve-imgmodel" data-val="gemini" onclick="App.selectModel(this)">Gemini Imagen</button>
+          <button class="model-btn${mdl==="chatgpt"?" sel":""}" data-group="ve-imgmodel" data-val="chatgpt" onclick="App.selectModel(this)">ChatGPT</button>
+          <button class="model-btn${mdl==="veo"?" sel":""}" data-group="ve-imgmodel" data-val="veo" onclick="App.selectModel(this)">Veo 2</button>
+        </div>
+      </div>
+      <div class="ve2-prop-sec">
+        <button class="ve2-prop-btn-pri" onclick="App.generateBeat(${beat.id})">⚡ 씬 ${bi+1} 이미지 생성</button>
+        <button class="ve2-prop-btn" style="margin-top:6px" onclick="App.generateAllBeats()">⚡ 전체 씬 생성</button>
+      </div>
+      <div class="ve2-prop-sec">
+        <div class="ve2-prop-lbl">상태</div>
+        <div class="ve2-prop-status ${entry?.status??"none"}">${
+          entry?.status==="ok"?"✅ 생성 완료":entry?.status==="gen"?"⏳ 생성 중...":entry?.status==="err"?"❌ 오류":"— 미생성"
+        }</div>
+        <div class="ve2-prop-lbl" style="margin-top:10px">진행</div>
+        <div class="ve2-gen-progress" id="ve-gen-progress"></div>
+      </div>`;
+    _veUpdateProgress();
+
+  } else if (tab === "text") {
+    const p   = VE.subtitleStyle.position;
+    const sz  = VE.subtitleStyle.fontSize;
+    const clr = VE.subtitleStyle.color;
+    const COLORS = ["#ffffff","#ffff00","#ff4444","#44ff88","#44aaff","#000000"];
+    body.innerHTML = `
+      <div class="ve2-prop-sec">
+        <div class="ve2-prop-lbl">자막 위치</div>
+        <div class="ve2-pos-row">
+          <button class="ve2-pos-btn${p==="top"?" sel":""}" onclick="App.veSetSubPos('top')">상단</button>
+          <button class="ve2-pos-btn${p==="middle"?" sel":""}" onclick="App.veSetSubPos('middle')">중앙</button>
+          <button class="ve2-pos-btn${p==="bottom"?" sel":""}" onclick="App.veSetSubPos('bottom')">하단</button>
+        </div>
+      </div>
+      <div class="ve2-prop-sec">
+        <div class="ve2-prop-lbl">글자 크기</div>
+        <div class="ve2-pos-row">
+          <button class="ve2-pos-btn${sz==="sm"?" sel":""}" onclick="App.veSetSubSize('sm')">S 작게</button>
+          <button class="ve2-pos-btn${sz==="md"?" sel":""}" onclick="App.veSetSubSize('md')">M 보통</button>
+          <button class="ve2-pos-btn${sz==="lg"?" sel":""}" onclick="App.veSetSubSize('lg')">L 크게</button>
+        </div>
+      </div>
+      <div class="ve2-prop-sec">
+        <div class="ve2-prop-lbl">색상</div>
+        <div class="ve2-color-row">${COLORS.map(c=>`<button class="ve2-color-dot${c===clr?" sel":""}" style="background:${c};${c==="#000000"?"border:1px solid var(--b2)":""}" onclick="App.veSetSubColor('${c}')" title="${c}"></button>`).join("")}</div>
+      </div>
+      <div class="ve2-prop-sec">
+        <div class="ve2-prop-lbl">대본 편집 — 씬 ${bi+1}</div>
+        <textarea class="ve2-ta" id="ve2-edit-ta" rows="3">${escHtml(beatLines.join("\n"))}</textarea>
+        <div class="ve2-sec-row">
+          <span class="ve2-sec-lbl">⏱ 노출 시간</span>
+          <input class="ve2-sec-inp" id="ve2-edit-sec" type="number" min="1" max="60" value="${sec}">
+          <span style="font-size:12px;color:var(--t3)">초</span>
+        </div>
+        <button class="ve2-prop-btn-pri" style="margin-top:8px" onclick="App.veEditSave()">💾 저장</button>
+      </div>`;
+
+  } else if (tab === "trans") {
+    const trans = beat.transition ?? "cut";
+    const TRANS = [
+      {id:"cut",       icon:"⬛",label:"컷"},
+      {id:"fade",      icon:"🌫",label:"페이드"},
+      {id:"slide-left",icon:"◀", label:"슬라이드"},
+      {id:"slide-up",  icon:"▲", label:"와이프"},
+    ];
+    body.innerHTML = `
+      <div class="ve2-prop-sec">
+        <div class="ve2-prop-lbl">씬 ${bi+1} 진입 전환 효과</div>
+        <div class="ve2-trans-grid">${TRANS.map(t=>`
+          <button class="ve2-trans-btn${trans===t.id?" sel":""}" onclick="App.veSetTrans('${t.id}')">
+            <span class="ve2-trans-icon">${t.icon}</span><span>${t.label}</span>
+          </button>`).join("")}
+        </div>
+      </div>
+      <div class="ve2-prop-sec" style="font-size:11px;color:var(--t3);line-height:1.6">선택한 전환 효과는 렌더 시 적용됩니다.</div>`;
+
+  } else if (tab === "scene") {
+    body.innerHTML = `
+      <div class="ve2-prop-sec">
+        <div class="ve2-prop-lbl">씬 ${bi+1} — ${escHtml(beat.purpose??"")}</div>
+      </div>
+      <div class="ve2-prop-sec ve2-scene-btns">
+        <button class="ve2-scene-btn" onclick="App.veSplitBeat()">✂️ 씬 분할</button>
+        <button class="ve2-scene-btn" onclick="App.veDuplicateBeat()">⧉ 씬 복제</button>
+        <button class="ve2-scene-btn ve2-scene-del" onclick="App.veDeleteBeat()">🗑️ 씬 삭제</button>
+      </div>
+      <div class="ve2-prop-sec" style="font-size:11px;color:var(--t3);line-height:1.7">
+        <b>분할</b>: 현재 씬을 절반 길이 두 씬으로 나눕니다.<br>
+        <b>복제</b>: 동일한 씬을 바로 다음에 삽입합니다.<br>
+        <b>삭제</b>: 현재 씬을 제거합니다 (최소 1개 유지).<br>
+        <b>순서 변경</b>: 타임라인 블록을 드래그하세요.
+      </div>`;
+  }
 }
 
 // ── App 공개 인터페이스 ───────────────────────────────
@@ -1187,8 +1406,7 @@ Object.assign(App, {
   veTogglePlay() {
     if (VE.playing) { App.veStopPlay(); return; }
     VE.playing = true;
-    const btn = document.getElementById("ve-play-btn");
-    if (btn) btn.textContent = "⏸ 일시정지";
+    ["ve-play-btn","ve2-tl-play"].forEach(id => { const b=document.getElementById(id); if(b) b.textContent="⏸"; });
     App._veAdvance();
   },
 
@@ -1196,15 +1414,13 @@ Object.assign(App, {
     VE.playing = false;
     clearTimeout(VE.playTimer);
     VE.playTimer = null;
-    const btn = document.getElementById("ve-play-btn");
-    if (btn) btn.textContent = "▶ 재생";
+    ["ve-play-btn","ve2-tl-play"].forEach(id => { const b=document.getElementById(id); if(b) b.textContent="▶"; });
   },
 
   _veAdvance() {
     if (!VE.playing) return;
     const beat  = VE.beats[VE.currentBeat];
     const raw   = beat?.estimated_sec ?? beat?.duration_seconds ?? 3;
-    // 미리보기 상한 6초 — 너무 긴 씬도 편하게 확인
     const delay = Math.min(6000, Math.max(1500, raw * 1000));
     VE.playTimer = setTimeout(() => {
       if (!VE.playing) return;
@@ -1217,79 +1433,142 @@ Object.assign(App, {
     }, delay);
   },
 
-  vePrev() {
-    App.veStopPlay();
-    if (VE.currentBeat > 0) _veShowBeat(VE.currentBeat - 1);
+  vePrev() { App.veStopPlay(); if (VE.currentBeat > 0) _veShowBeat(VE.currentBeat - 1); },
+  veNext() { App.veStopPlay(); if (VE.currentBeat < VE.beats.length - 1) _veShowBeat(VE.currentBeat + 1); },
+
+  // ── 속성 탭 전환 ──────────────────────────────────────
+  veSwitchTab(btn) {
+    document.querySelectorAll(".ve2-tab").forEach(b => b.classList.toggle("sel", b === btn));
+    VE.propTab = btn.dataset.tab;
+    _veRenderProps();
+  },
+  veSwitchTabName(name) {
+    const btn = document.querySelector(`.ve2-tab[data-tab="${name}"]`);
+    if (btn) App.veSwitchTab(btn);
   },
 
-  veNext() {
-    App.veStopPlay();
-    if (VE.currentBeat < VE.beats.length - 1) _veShowBeat(VE.currentBeat + 1);
+  // ── 타임라인 줌 ───────────────────────────────────────
+  veTlZoom(delta) {
+    const lv = [6, 10, 16, 24, 36, 52, 80];
+    const i  = lv.findIndex(l => l >= VE.zoom) + delta;
+    VE.zoom  = lv[Math.max(0, Math.min(lv.length - 1, i))] ?? VE.zoom;
+    _veRenderTimeline();
   },
 
-  // ── 편집비주얼 씬 수동 편집 ─────────────────────────────
-  veEditBeat(bi) {
-    VE.editingBeat = bi;
-    const beat     = VE.beats[bi];
-    const numBeats = Math.max(VE.beats.length, 1);
-    const perBeat  = Math.ceil(VE.lines.length / numBeats);
+  // ── 자막 스타일 ───────────────────────────────────────
+  veSetSubPos(pos)   { VE.subtitleStyle.position = pos;   _veShowBeat(VE.currentBeat); _veRenderProps(); },
+  veSetSubSize(size) { VE.subtitleStyle.fontSize = size;  _veShowBeat(VE.currentBeat); _veRenderProps(); },
+  veSetSubColor(clr) { VE.subtitleStyle.color    = clr;   _veShowBeat(VE.currentBeat); _veRenderProps(); },
+
+  // ── 전환 효과 ─────────────────────────────────────────
+  veSetTrans(type) {
+    const beat = VE.beats[VE.currentBeat];
+    if (beat) beat.transition = type;
+    _veRenderTimeline();
+    _veRenderProps();
+  },
+
+  // ── 씬 조작 ───────────────────────────────────────────
+  veSplitBeat() {
+    const bi   = VE.currentBeat;
+    const beat = VE.beats[bi];
+    if (!beat) return;
+    const sec  = beat.estimated_sec ?? beat.duration_seconds ?? 5;
+    const half = Math.max(1, Math.round(sec / 2));
+
+    const numBeats  = Math.max(VE.beats.length, 1);
+    const perBeat   = Math.ceil(VE.lines.length / numBeats);
     const beatLines = VE.lines.slice(bi * perBeat, (bi + 1) * perBeat);
+    const lineHalf  = Math.max(1, Math.floor(beatLines.length / 2));
 
-    const titleEl = document.getElementById("ve-edit-title");
-    if (titleEl) titleEl.textContent = `씬 ${bi + 1} — ${beat?.purpose ?? ""}`;
+    const beatA = { ...beat, estimated_sec: half, duration_seconds: half };
+    const beatB = { ...beat, estimated_sec: sec - half, duration_seconds: sec - half,
+                    id: (beat.id ?? bi+1) + 0.5, purpose: (beat.purpose ?? `씬${bi+1}`) + " (2)" };
+    VE.beats.splice(bi, 1, beatA, beatB);
 
-    const taEl = document.getElementById("ve-edit-script-ta");
-    if (taEl) taEl.value = beatLines.join("\n");
-
-    const secEl = document.getElementById("ve-edit-sec-inp");
-    if (secEl) secEl.value = beat?.estimated_sec ?? beat?.duration_seconds ?? 5;
-
-    const panel = document.getElementById("ve-edit-panel");
-    if (panel) panel.style.display = "block";
-
-    _veShowBeat(bi);
-  },
-
-  veEditSave() {
-    const bi = VE.editingBeat;
-    if (bi < 0) return;
-
-    const lines    = [...(State.gatePayloads.script?.lines ?? [])];
-    const numBeats = Math.max(VE.beats.length, 1);
-    const perBeat  = Math.ceil(lines.length / numBeats);
-    const newLines = (document.getElementById("ve-edit-script-ta")?.value ?? "")
-      .split("\n").map(l => l.trim()).filter(Boolean);
-
-    newLines.forEach((line, i) => {
-      const gi = bi * perBeat + i;
-      if (gi < lines.length) lines[gi] = line;
-    });
-    if (State.gatePayloads.script) State.gatePayloads.script.lines = lines;
+    const lines = [
+      ...VE.lines.slice(0, bi * perBeat + lineHalf),
+      ...VE.lines.slice(bi * perBeat + lineHalf),
+    ];
     VE.lines = lines;
+    if (State.gatePayloads.script) State.gatePayloads.script.lines = lines;
 
-    const newSec = parseInt(document.getElementById("ve-edit-sec-inp")?.value);
-    if (!isNaN(newSec) && VE.beats[bi]) {
-      VE.beats[bi].estimated_sec    = newSec;
-      VE.beats[bi].duration_seconds = newSec;
-    }
-
-    App.veEditClose();
     _veRenderTimeline();
     _veShowBeat(bi);
   },
 
-  veEditClose() {
-    VE.editingBeat = -1;
-    const panel = document.getElementById("ve-edit-panel");
-    if (panel) panel.style.display = "none";
+  veDuplicateBeat() {
+    const bi   = VE.currentBeat;
+    const beat = VE.beats[bi];
+    if (!beat) return;
+    const copy = { ...beat, id: (beat.id ?? bi+1) + 0.5, purpose: (beat.purpose ?? `씬${bi+1}`) + " (복제)" };
+    VE.beats.splice(bi + 1, 0, copy);
+    _veRenderTimeline();
+    _veShowBeat(bi + 1);
   },
 
-  veRegenCurrent() {
-    const bi   = VE.editingBeat >= 0 ? VE.editingBeat : VE.currentBeat;
-    const beat = VE.beats[bi];
-    if (beat) App.generateBeat(beat.id ?? bi + 1);
-    App.veEditClose();
+  veDeleteBeat() {
+    if (VE.beats.length <= 1) { alert("마지막 씬은 삭제할 수 없습니다."); return; }
+    VE.beats.splice(VE.currentBeat, 1);
+    const newBi = Math.min(VE.currentBeat, VE.beats.length - 1);
+    _veRenderTimeline();
+    _veShowBeat(newBi);
   },
+
+  // ── 드래그 순서 변경 ──────────────────────────────────
+  _veDragStart(event, bi) {
+    VE._dragFrom = bi;
+    event.dataTransfer.effectAllowed = "move";
+    setTimeout(() => document.getElementById(`ve2-blk-${bi}`)?.classList.add("ve2-blk-dragging"), 0);
+  },
+  _veDragOver(event, bi) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    document.querySelectorAll(".ve2-blk").forEach((el, i) =>
+      el.classList.toggle("ve2-blk-dragover", i === bi && i !== VE._dragFrom));
+  },
+  _veDragLeave(event, bi) { document.getElementById(`ve2-blk-${bi}`)?.classList.remove("ve2-blk-dragover"); },
+  _veDrop(event, bi) {
+    event.preventDefault();
+    document.querySelectorAll(".ve2-blk").forEach(el => el.classList.remove("ve2-blk-dragover","ve2-blk-dragging"));
+    const from = VE._dragFrom; VE._dragFrom = null;
+    if (from == null || from === bi) return;
+    const b = [...VE.beats];
+    const [item] = b.splice(from, 1);
+    b.splice(bi, 0, item);
+    VE.beats = b;
+    _veRenderTimeline();
+    _veShowBeat(bi);
+  },
+
+  // ── 편집 저장 (텍스트 탭) ─────────────────────────────
+  veEditSave() {
+    const bi = VE.currentBeat;
+    if (bi < 0 || bi >= VE.beats.length) return;
+    const lines    = [...(State.gatePayloads.script?.lines ?? [])];
+    const numBeats = Math.max(VE.beats.length, 1);
+    const perBeat  = Math.ceil(lines.length / numBeats);
+    const ta = document.getElementById("ve2-edit-ta");
+    if (ta) {
+      ta.value.split("\n").map(l => l.trim()).filter(Boolean).forEach((line, i) => {
+        const gi = bi * perBeat + i;
+        if (gi < lines.length) lines[gi] = line;
+      });
+      if (State.gatePayloads.script) State.gatePayloads.script.lines = lines;
+      VE.lines = lines;
+    }
+    const secEl = document.getElementById("ve2-edit-sec");
+    if (secEl && VE.beats[bi]) {
+      const ns = parseInt(secEl.value);
+      if (!isNaN(ns)) { VE.beats[bi].estimated_sec = ns; VE.beats[bi].duration_seconds = ns; }
+    }
+    _veRenderTimeline();
+    _veShowBeat(bi);
+  },
+
+  veEditBeat(bi)   { App.veSelectBeat(bi); App.veSwitchTabName("text"); },
+  veEditClose()    { VE.editingBeat = -1; },
+  veRegenCurrent() { const beat = VE.beats[VE.currentBeat]; if (beat) App.generateBeat(beat.id ?? VE.currentBeat+1); },
 });
 
 // ── 유틸 ────────────────────────────────────────────────

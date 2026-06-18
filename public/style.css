@@ -284,70 +284,131 @@ body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 /* ── Escalation overlay ── */
 /* ── 편집 비주얼 (p-visual-edit) ── */
 #p-visual-edit{flex-direction:column}
-/* ── 편집비주얼 에디터 레이아웃 ── */
+/* ── 편집비주얼 v2 (CapCut 스타일) ── */
 .ve-field-label{font-size:11px;font-weight:600;color:var(--t3);letter-spacing:.3px;text-transform:uppercase}
-.ve-editor{display:flex;flex:1;min-height:0;gap:0}
+.ve2-editor{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden}
 
-/* 좌: 미리보기 플레이어 */
-.ve-preview-pane{width:52%;display:flex;flex-direction:column;border-right:1px solid var(--b1);flex-shrink:0}
-.ve-preview-screen{flex:1;position:relative;background:#0a0a10;overflow:hidden;min-height:0}
-.ve-preview-img-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;position:relative}
-.ve-preview-img-wrap img{max-width:100%;max-height:100%;object-fit:contain;display:block}
-.ve-preview-placeholder{color:var(--t3);font-size:13px;text-align:center;line-height:1.8;pointer-events:none}
-.ve-preview-chart{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:48px}
-.ve-preview-top-bar{position:absolute;top:10px;left:10px;right:10px;font-size:11px;font-weight:700;color:rgba(255,255,255,.85);background:rgba(0,0,0,.55);padding:4px 10px;border-radius:5px;backdrop-filter:blur(4px);pointer-events:none}
-.ve-preview-script-bar{position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(transparent,rgba(0,0,0,.8));font-size:13px;color:#fff;line-height:1.5;pointer-events:none;min-height:44px}
-.ve-player-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--b1);background:var(--s1);flex-shrink:0}
-.ve-player-btn{background:var(--s2);border:1px solid var(--b2);color:var(--t1);border-radius:6px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit;transition:all .15s;flex-shrink:0}
-.ve-player-btn:hover{border-color:var(--acc);color:var(--acc-l)}
-.ve-play-main{background:var(--acc);border-color:transparent;color:#fff;padding:7px 18px;font-weight:700}
-.ve-play-main:hover{background:#4f46e5;border-color:transparent;color:#fff}
-.ve-player-time{font-size:12px;color:var(--t3);margin-left:auto;white-space:nowrap}
+/* 상단: 미리보기 + 속성 */
+.ve2-workspace{display:flex;flex:1;min-height:0;border-bottom:1px solid var(--b1)}
+.ve2-preview-area{flex:0 0 58%;display:flex;flex-direction:column;border-right:1px solid var(--b1)}
+.ve2-screen{flex:1;position:relative;background:#08080f;overflow:hidden;min-height:0}
+.ve2-img-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+.ve2-img-wrap img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.ve2-placeholder{color:var(--t3);font-size:13px;text-align:center;line-height:1.8;pointer-events:none}
+.ve2-scene-label{position:absolute;top:10px;left:10px;right:10px;font-size:11px;font-weight:700;color:rgba(255,255,255,.88);background:rgba(0,0,0,.55);padding:4px 10px;border-radius:5px;backdrop-filter:blur(4px);pointer-events:none}
+.ve2-subtitle{position:absolute;left:0;right:0;padding:8px 14px;font-size:15px;color:#fff;text-align:center;text-shadow:0 1px 4px rgba(0,0,0,.85);pointer-events:none;line-height:1.55;transition:top .2s,bottom .2s}
+.ve2-subtitle[data-pos="bottom"]{bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.82))}
+.ve2-subtitle[data-pos="middle"]{top:50%;transform:translateY(-50%);background:rgba(0,0,0,.52);border-radius:6px;margin:0 10px}
+.ve2-subtitle[data-pos="top"]{top:34px;background:rgba(0,0,0,.52);border-radius:6px;margin:0 10px}
+.ve2-playbar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--b1);background:var(--s1);flex-shrink:0}
+.ve2-pbtn{background:var(--s2);border:1px solid var(--b2);color:var(--t1);border-radius:6px;padding:6px 14px;font-size:14px;cursor:pointer;font-family:inherit;transition:all .15s;flex-shrink:0}
+.ve2-pbtn:hover{border-color:var(--acc);color:var(--acc-l)}
+.ve2-play-main{background:var(--acc);border-color:transparent;color:#fff;padding:7px 20px;font-weight:700;font-size:16px}
+.ve2-play-main:hover{background:#4f46e5;border-color:transparent;color:#fff}
+.ve2-ptime{font-size:12px;color:var(--t3);white-space:nowrap}
+.ve2-total-time{margin-left:auto}
 
-/* 우: 타임라인 + 편집 패널 */
-.ve-timeline-pane{flex:1;display:flex;flex-direction:column;min-width:0}
-.ve-tools-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--b1);flex-shrink:0;gap:8px}
-.ve-tools-left{display:flex;align-items:center;gap:8px}
-.ve-timeline{flex:1;overflow-y:auto;padding:8px 10px;display:flex;flex-direction:column;gap:6px}
-.ve-timeline::-webkit-scrollbar{width:5px}.ve-timeline::-webkit-scrollbar-thumb{background:var(--s3);border-radius:3px}
+/* 속성 패널 */
+.ve2-props{flex:1;display:flex;flex-direction:column;min-width:0}
+.ve2-tabs{display:flex;border-bottom:1px solid var(--b1);flex-shrink:0}
+.ve2-tab{flex:1;padding:10px 4px;background:none;border:none;border-bottom:2px solid transparent;color:var(--t3);font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
+.ve2-tab.sel{color:var(--acc-l);border-bottom-color:var(--acc)}
+.ve2-tab:hover:not(.sel){color:var(--t2)}
+.ve2-props-body{flex:1;overflow-y:auto;padding:14px 12px}
+.ve2-props-body::-webkit-scrollbar{width:4px}.ve2-props-body::-webkit-scrollbar-thumb{background:var(--s3);border-radius:2px}
 
-/* 타임라인 카드 */
-.ve-tl-card{display:flex;align-items:stretch;gap:0;border:1.5px solid var(--b1);border-radius:var(--r2);overflow:hidden;cursor:pointer;transition:border-color .15s,box-shadow .15s;background:var(--s1)}
-.ve-tl-card:hover{border-color:var(--b2)}
-.ve-tl-card.ve-tl-active{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc-g)}
-.ve-tl-card.ve-tl-gen{border-color:rgba(250,204,21,.5)}
-.ve-tl-card.ve-tl-done{border-color:rgba(34,197,94,.4)}
-.ve-tl-num{width:28px;background:var(--s2);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:var(--t3);flex-shrink:0;border-right:1px solid var(--b1)}
-.ve-tl-card.ve-tl-active .ve-tl-num{background:var(--acc-d);color:var(--acc-l)}
-.ve-tl-thumb{width:80px;height:52px;flex-shrink:0;background:var(--bg);overflow:hidden;display:flex;align-items:center;justify-content:center;border-right:1px solid var(--b1)}
-.ve-tl-thumb img{width:100%;height:100%;object-fit:cover;display:block}
-.ve-tl-thumb-ph{font-size:18px;color:var(--t3)}
-.ve-tl-thumb-spin{width:16px;height:16px;border:2px solid var(--b2);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite}
-.ve-tl-info{flex:1;padding:7px 10px;display:flex;flex-direction:column;gap:3px;min-width:0;justify-content:center}
-.ve-tl-label{font-size:12px;font-weight:700;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ve-tl-script{font-size:11px;color:var(--t2);line-height:1.45;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-.ve-tl-meta{font-size:10px;color:var(--t3)}
-.ve-tl-btns{display:flex;flex-direction:column;gap:4px;padding:6px 8px;justify-content:center;flex-shrink:0;border-left:1px solid var(--b1)}
-.ve-tl-btn{background:var(--s2);border:1px solid var(--b1);color:var(--t2);border-radius:5px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:inherit;white-space:nowrap;transition:all .12s}
-.ve-tl-btn:hover{border-color:var(--acc);color:var(--acc-l)}
+/* 타임라인 영역 */
+.ve2-tl-area{height:182px;flex-shrink:0;display:flex;flex-direction:column}
+.ve2-tl-controls{display:flex;align-items:center;gap:6px;padding:5px 10px;border-bottom:1px solid var(--b1);flex-shrink:0;background:var(--s1)}
+.ve2-tl-cbtn{background:var(--s2);border:1px solid var(--b2);color:var(--t1);border-radius:5px;padding:4px 10px;font-size:13px;cursor:pointer;font-family:inherit;transition:all .12s}
+.ve2-tl-cbtn:hover{border-color:var(--acc);color:var(--acc-l)}
+.ve2-tl-play{background:var(--acc);border-color:transparent;color:#fff;font-size:14px;padding:4px 13px}
+.ve2-tl-play:hover{background:#4f46e5;border-color:transparent;color:#fff}
+.ve2-tl-tc{font-size:13px;color:var(--t1);font-weight:700;letter-spacing:.5px;min-width:44px}
+.ve2-tl-lbl{font-size:11px;color:var(--t3)}
+.ve2-tl-scroll{flex:1;overflow-x:auto;overflow-y:hidden;position:relative}
+.ve2-tl-scroll::-webkit-scrollbar{height:4px}.ve2-tl-scroll::-webkit-scrollbar-thumb{background:var(--s3);border-radius:2px}
+.ve2-tl-inner{position:relative;height:100%;min-width:100%}
 
-/* 씬 편집 패널 */
-.ve-edit-panel{background:var(--s1);border-top:1px solid var(--b1);padding:14px 14px 10px;flex-shrink:0;max-height:280px;overflow-y:auto}
-.ve-edit-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-.ve-edit-title{font-size:13px;font-weight:700;color:var(--t1)}
-.ve-edit-close{background:none;border:none;color:var(--t3);cursor:pointer;font-size:15px;padding:0 4px;line-height:1;transition:color .12s}
-.ve-edit-close:hover{color:var(--t1)}
-.ve-edit-label{font-size:11px;font-weight:600;color:var(--t3);margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px}
-.ve-edit-ta{width:100%;background:var(--bg);border:1px solid var(--b2);border-radius:7px;color:var(--t1);font-size:12.5px;font-family:inherit;padding:9px 11px;resize:vertical;box-sizing:border-box;line-height:1.55;transition:border-color .15s}
-.ve-edit-ta:focus{outline:none;border-color:var(--acc)}
-.ve-edit-sec-row{display:flex;align-items:center;gap:8px;margin-top:10px}
-.ve-edit-sec-label{font-size:12px;color:var(--t2);flex:1}
-.ve-edit-sec-inp{width:58px;background:var(--bg);border:1px solid var(--b2);border-radius:6px;color:var(--t1);font-size:13px;font-family:inherit;padding:5px 8px;text-align:center;transition:border-color .15s}
-.ve-edit-sec-inp:focus{outline:none;border-color:var(--acc)}
-.ve-edit-sec-unit{font-size:12px;color:var(--t3)}
-.ve-edit-actions{display:flex;gap:8px;margin-top:10px}
+/* 타임 눈금자 */
+.ve2-tl-ruler{height:18px;position:relative;background:var(--s1);border-bottom:1px solid var(--b1)}
+.ve2-ruler-tick{position:absolute;top:4px;font-size:9px;color:var(--t3);transform:translateX(-50%);white-space:nowrap;user-select:none}
+.ve2-ruler-tick::before{content:'';position:absolute;top:-4px;left:50%;width:1px;height:4px;background:var(--b2)}
 
-/* 생성 스피너 (인라인) */
+/* 씬 트랙 */
+.ve2-tl-track{height:66px;position:relative;background:var(--bg)}
+.ve2-blk{position:absolute;top:4px;height:58px;border:1.5px solid var(--b2);border-radius:6px;overflow:visible;cursor:pointer;transition:border-color .12s,box-shadow .12s;user-select:none;box-sizing:border-box}
+.ve2-blk:hover{border-color:var(--t2)}
+.ve2-blk-active{border-color:var(--acc) !important;box-shadow:0 0 0 2px var(--acc-g)}
+.ve2-blk-done{border-color:rgba(34,197,94,.55)}
+.ve2-blk-gen{border-color:rgba(250,204,21,.7);animation:pulse .9s ease-in-out infinite}
+.ve2-blk-dragging{opacity:.45}
+.ve2-blk-dragover{border-color:#a78bfa !important;box-shadow:0 0 0 2px rgba(167,139,250,.3) !important}
+
+/* 트림 핸들 */
+.ve2-blk-tl,.ve2-blk-tr{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:3;background:rgba(255,255,255,.1);transition:background .12s}
+.ve2-blk-tl{left:-1px;border-radius:5px 0 0 5px}
+.ve2-blk-tr{right:-1px;border-radius:0 5px 5px 0}
+.ve2-blk-tl:hover,.ve2-blk-tr:hover{background:rgba(99,102,241,.6)}
+.ve2-blk-tl::after,.ve2-blk-tr::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:18px;background:rgba(255,255,255,.5);border-radius:1px}
+
+/* 씬 블록 내부 */
+.ve2-blk-inner{display:flex;height:100%;overflow:hidden;border-radius:5px;background:var(--s1)}
+.ve2-blk-thumb{width:54px;flex-shrink:0;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;border-right:1px solid var(--b1)}
+.ve2-blk-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.ve2-blk-ph{font-size:20px;opacity:.28}
+.ve2-blk-info{flex:1;padding:5px 7px;display:flex;flex-direction:column;gap:3px;min-width:0;justify-content:center}
+.ve2-blk-label{font-size:11px;font-weight:700;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ve2-blk-dur{font-size:10px;color:var(--t3)}
+
+/* 전환 효과 알약 */
+.ve2-trans-pill{position:absolute;top:22px;width:16px;height:16px;transform:translateX(-8px);background:var(--s2);border:1px solid var(--b2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;cursor:pointer;z-index:4;transition:all .12s;color:var(--t2)}
+.ve2-trans-pill:hover{background:var(--acc-d);border-color:var(--acc);color:var(--acc-l);transform:translateX(-8px) scale(1.2)}
+
+/* 오디오 트랙 */
+.ve2-tl-audio{height:26px;position:relative;background:var(--s1);border-top:1px solid var(--b1);display:flex;align-items:center;gap:0}
+.ve2-tl-audio-lbl{width:22px;font-size:11px;color:var(--t3);text-align:center;flex-shrink:0}
+.ve2-tl-audio-wave{flex:1;height:26px;display:flex;align-items:center;gap:1px;overflow:hidden}
+.ve2-wave-bar{width:3px;border-radius:1.5px;background:rgba(99,102,241,.38);flex-shrink:0}
+
+/* 플레이헤드 */
+.ve2-playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--acc);pointer-events:none;z-index:10}
+.ve2-playhead::before{content:'▼';position:absolute;top:-1px;left:-5px;font-size:10px;color:var(--acc)}
+
+/* ── 속성 패널 내용 ── */
+.ve2-prop-sec{margin-bottom:14px}
+.ve2-prop-lbl{font-size:11px;font-weight:600;color:var(--t3);letter-spacing:.3px;text-transform:uppercase;margin-bottom:7px}
+.ve2-prop-btn{width:100%;background:var(--s2);border:1px solid var(--b2);color:var(--t1);border-radius:7px;padding:9px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;text-align:center;display:block}
+.ve2-prop-btn:hover{border-color:var(--acc);color:var(--acc-l)}
+.ve2-prop-btn-pri{width:100%;background:var(--acc);border:none;color:#fff;border-radius:7px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s;display:block}
+.ve2-prop-btn-pri:hover{background:#4f46e5}
+.ve2-prop-status{font-size:12px;color:var(--t2)}.ve2-prop-status.ok{color:var(--gr)}.ve2-prop-status.err{color:#f87171}.ve2-prop-status.gen{color:var(--acc-l)}
+.ve2-prop-empty{font-size:13px;color:var(--t3);text-align:center;padding:24px 0}
+.ve2-pos-row{display:flex;gap:6px}
+.ve2-pos-btn{flex:1;background:var(--s2);border:1px solid var(--b2);color:var(--t2);border-radius:6px;padding:7px 4px;font-size:12px;cursor:pointer;font-family:inherit;transition:all .15s;text-align:center}
+.ve2-pos-btn.sel{background:var(--acc-d);border-color:var(--acc);color:var(--acc-l)}
+.ve2-pos-btn:hover:not(.sel){border-color:var(--acc)}
+.ve2-color-row{display:flex;gap:8px;flex-wrap:wrap}
+.ve2-color-dot{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:transform .15s,border-color .15s;flex-shrink:0}
+.ve2-color-dot.sel{border-color:var(--acc);transform:scale(1.18)}
+.ve2-ta{width:100%;background:var(--bg);border:1px solid var(--b2);border-radius:7px;color:var(--t1);font-size:12.5px;font-family:inherit;padding:9px 11px;resize:vertical;box-sizing:border-box;line-height:1.55;transition:border-color .15s}
+.ve2-ta:focus{outline:none;border-color:var(--acc)}
+.ve2-sec-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.ve2-sec-lbl{font-size:12px;color:var(--t2);flex:1}
+.ve2-sec-inp{width:58px;background:var(--bg);border:1px solid var(--b2);border-radius:6px;color:var(--t1);font-size:13px;font-family:inherit;padding:5px 8px;text-align:center;transition:border-color .15s}
+.ve2-sec-inp:focus{outline:none;border-color:var(--acc)}
+.ve2-trans-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ve2-trans-btn{background:var(--s2);border:1px solid var(--b2);color:var(--t2);border-radius:8px;padding:10px 8px;font-size:12px;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:5px;transition:all .15s}
+.ve2-trans-btn.sel{background:var(--acc-d);border-color:var(--acc);color:var(--acc-l)}
+.ve2-trans-btn:hover:not(.sel){border-color:var(--acc)}
+.ve2-trans-icon{font-size:22px}
+.ve2-scene-btns{display:flex;flex-direction:column;gap:8px}
+.ve2-scene-btn{background:var(--s2);border:1px solid var(--b2);color:var(--t1);border-radius:7px;padding:9px 14px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;text-align:left}
+.ve2-scene-btn:hover{border-color:var(--acc);color:var(--acc-l)}
+.ve2-scene-del{border-color:rgba(244,63,94,.3);color:#fb7185}
+.ve2-scene-del:hover{border-color:#fb7185;background:rgba(244,63,94,.1);color:#fb7185}
+
+/* 생성 스피너 (공용) */
 .ve-gen-spinner{width:14px;height:14px;border:2px solid var(--b2);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:middle}
 
 .ve-footer{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-top:1px solid var(--b1);background:var(--s1);flex-shrink:0;gap:16px;flex-wrap:wrap}
